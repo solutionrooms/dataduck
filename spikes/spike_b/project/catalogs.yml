@@ -1,0 +1,12 @@
+# Same DuckLake the session factory attaches: metadata in Postgres schema `dev` of the `lake`
+# database, data under s3://lakehouse/dev/. Postgres credentials come from libpq env vars
+# (PGHOST, PGPORT, PGUSER, PGPASSWORD), because DuckLake entries here take no secret option.
+catalogs:
+  - name: dev
+    type: ducklake
+    table_format: default
+    config:
+      duckdb:
+        metadata_path: "postgres:dbname=lake"
+        metadata_schema: dev
+        data_path: "s3://lakehouse/dev/"

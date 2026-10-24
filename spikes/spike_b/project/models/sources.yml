@@ -1,0 +1,6 @@
+sources:
+  - name: spike
+    database: dev
+    schema: default
+    tables:
+      - name: spike_b_src

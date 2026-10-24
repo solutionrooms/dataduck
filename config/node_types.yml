@@ -1,0 +1,12 @@
+# Cluster sizes. A Databricks node_type_id we don't know maps to `default` with a warning.
+default: dbk.medium
+node_types:
+  dbk.small:
+    memory_limit: 2GB
+    threads: 2
+  dbk.medium:
+    memory_limit: 4GB
+    threads: 4
+  dbk.large:
+    memory_limit: 8GB
+    threads: 8
