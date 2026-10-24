@@ -1,0 +1,9 @@
+name: spike_b
+version: "1.0"
+profile: spike_b
+model-paths: ["models"]
+models:
+  spike_b:
+    +materialized: table
+    # A model writes to a DuckLake catalog by naming the catalogs.yml entry, not `database`.
+    +catalog_name: dev

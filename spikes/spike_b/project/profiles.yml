@@ -1,0 +1,18 @@
+spike_b:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ":memory:"
+      schema: default
+      threads: 1
+      extensions: [httpfs, postgres, ducklake]
+      secrets:
+        - type: s3
+          name: dbk_s3
+          key_id: "{{ env_var('DBK_S3_ACCESS_KEY') }}"
+          secret: "{{ env_var('DBK_S3_SECRET_KEY') }}"
+          endpoint: "{{ env_var('DBK_S3_ENDPOINT') }}"
+          region: us-east-1
+          url_style: path
+          use_ssl: false
