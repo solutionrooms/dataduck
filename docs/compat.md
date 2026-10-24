@@ -28,6 +28,14 @@ entries at the top of each table.
 | `sql_task` parameter markers | DuckDB `$name` | Different | ADR 0001 #9 |
 | Quartz day-of-week 1-7 (SUN=1) | Converted to cron 0-6; year field must be `*` | Same | ADR 0001 #6 |
 
+## dbt
+
+| Databricks | Duckbricks | Kind | Why |
+|---|---|---|---|
+| `dbt_task` on a SQL warehouse | dbt-oss 2.0.8 in the worker, DuckDB adapter, DuckLake via `catalogs.yml` | Different | SPEC.md section 9, ADR 0005 |
+| Model `database:` naming a catalog | Use `catalog_name:`; `database:` naming a catalogs.yml entry fails (dbt1005) | Different | dbt v2 catalogs |
+| Column lineage | Not produced by dbt-oss; open decision for Phase 4 | Deferred | ADR 0005 |
+
 ## Engine notes
 
 | Topic | Note |

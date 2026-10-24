@@ -385,12 +385,12 @@ Five phases, each ending in a demo-able system with `make check` green. Do not s
 
 ### Phase 0: Scaffold and spikes
 
-- [ ] Repo layout, uv project, ruff, pytest, mypy, Makefile, `CLAUDE.md`, `VERSIONS.md`, `docs/progress.md`
-- [ ] Compose: postgres, seaweedfs (buckets created at start-up), api with a health endpoint
-- [ ] Session factory and catalog bootstrap (`main`, `dev`, `prod`)
-- [ ] Spike A: two separate processes write different tables in the same DuckLake catalog at the same time, and each reads the other's table
-- [ ] Spike B: dbt-oss v2 builds one model into a Postgres-backed DuckLake on SeaweedFS. If it cannot, write the ADR and choose the fallback now
-- [ ] Generate `schemas/bundle_config_schema.json`
+- [x] Repo layout, uv project, ruff, pytest, mypy, Makefile, `CLAUDE.md`, `VERSIONS.md`, `docs/progress.md`
+- [x] Compose: postgres, seaweedfs (buckets created at start-up), api with a health endpoint
+- [x] Session factory and catalog bootstrap (`main`, `dev`, `prod`) — `workspace` replaces `main` (docs/adr/0002)
+- [x] Spike A: two separate processes write different tables in the same DuckLake catalog at the same time, and each reads the other's table
+- [x] Spike B: dbt-oss v2 builds one model into a Postgres-backed DuckLake on SeaweedFS. If it cannot, write the ADR and choose the fallback now
+- [x] Generate `schemas/bundle_config_schema.json`
 
 **Acceptance:** `make up` is healthy, `make check` is green, both spikes pass or have an ADR, and `VERSIONS.md` is filled in.
 
