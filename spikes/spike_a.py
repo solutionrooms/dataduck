@@ -45,8 +45,7 @@ def run_worker(worker: int, barrier: Any, results: Any) -> None:
         out["write_start"] = time.time()
         for batch in range(INSERTS):
             con.execute(
-                f"INSERT INTO {own} SELECT {worker}, {batch}, range "
-                f"FROM range({ROWS_PER_INSERT})"
+                f"INSERT INTO {own} SELECT {worker}, {batch}, range FROM range({ROWS_PER_INSERT})"
             )
         out["write_end"] = time.time()
 
