@@ -71,11 +71,12 @@ class DuckbricksClient:
     def request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         try:
             response = self.http.request(method, path, **kwargs)
-        except httpx.ConnectError as exc:
+        except httpx.TransportError as exc:
             raise ApiCallError(
                 0,
                 "UNAVAILABLE",
-                f"Cannot reach the Duckbricks API at {self.host}. Is the stack up (`make up`)?",
+                f"Cannot reach the Duckbricks API at {self.host} ({type(exc).__name__}). "
+                "Is the stack up (`make up`)?",
             ) from exc
         if response.status_code >= 400:
             try:

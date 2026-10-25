@@ -25,7 +25,11 @@ from duckbricks.client import ApiCallError, DuckbricksClient
 console = Console()
 err = Console(stderr=True)
 
-app = typer.Typer(no_args_is_help=True, help="Duckbricks: a local, Databricks-shaped platform.")
+app = typer.Typer(
+    no_args_is_help=True,
+    help="Duckbricks: a local, Databricks-shaped platform.",
+    pretty_exceptions_show_locals=False,
+)
 bundle_app = typer.Typer(no_args_is_help=True, help="Declarative Automation Bundles.")
 jobs_app = typer.Typer(no_args_is_help=True, help="Jobs.")
 runs_app = typer.Typer(no_args_is_help=True, help="Job runs.")
