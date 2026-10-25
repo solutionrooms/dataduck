@@ -1,5 +1,53 @@
 # Progress
 
+## 2026-10-25: Phases 1-4 and the web UI (branch `platform`)
+
+The owner asked for a full working platform: workspace features, DuckDB compute, pipelines, jobs
+and schedules compatible with bundles, dbt, and MCP-native control from Claude Code.
+
+**Done**
+
+- Phase 1: control DB schema (Alembic 0002), Unity Catalog API subset, Statement Execution API,
+  Jobs API 2.2 with the worker queue (retries, run_if, cancel, timeouts, task values, dynamic
+  values), Quartz schedules, `dbk` CLI, `dbk-mcp` server.
+- Phase 2: bundle resolution and validation against the bundle schema, idempotent deploy and
+  destroy, dbt task (full distribution 2.0.9 by default, ADR 0006), `dbt_check`, the shop_demo
+  example, seed script and `make e2e`.
+- Phase 3: file arrival triggers, SQL warehouses over Quack with auto-start and auto-stop
+  (ADR 0010), marimo notebooks with a starter notebook (ADR 0011), `dbk sql transpile`,
+  project skill `.claude/skills/duckbricks-bundle`.
+- Phase 4: lineage from dbt column lineage and pipelines, `sys` system tables (ADR 0007),
+  SQL pipelines with expectations and incremental streaming tables (ADR 0012), the web_events
+  example.
+- Web UI in the Databricks layout (ADR 0009) and the Workspace API.
+- Warehouses and notebooks no longer read the control database (only api and worker do).
+
+**Acceptance**
+
+| Check | Result |
+|---|---|
+| `make check` | Pass: ruff, format, mypy (core, bundles, warehouses, mcp, ops), 110 unit and golden tests |
+| `make test-integration` | Pass: 14 tests (jobs, session, warehouses, notebooks service) |
+| `make e2e` | Pass: shop_demo validate → deploy → run (SUCCESS) → 90 gold rows → redeploy without duplicates → rerun without double-loading → lineage → destroy; web_events pipeline with expectations and incremental reload |
+| MCP over stdio | 22 tools and 2 prompts listed; read tools, read-only rejection and destroy confirmation checked |
+| File arrival | Baseline then a new file fired a run (trigger FILE_ARRIVAL) |
+
+**In progress**
+
+- Databricks mirror (cache a Databricks schema in a local DuckLake catalog): options discussed
+  with the owner; waiting on which access paths their workspace allows.
+
+**Next**
+
+1. Mirror: probe UC credential vending and the SQL warehouse path against one table, then build
+   a `DATABRICKS` connection + foreign catalog with `mode: mirror`.
+2. UI unit tests; a Playwright smoke test in `make e2e`.
+3. Phase 5 (stretch): wire compatibility with the real Databricks CLI.
+
+**Blockers**
+
+None.
+
 ## 2026-10-25: Phase 0 complete
 
 **Done**

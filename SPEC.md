@@ -26,7 +26,7 @@ The owner is an experienced Databricks practitioner (Unity Catalog, DLT, dbt, As
 - Wire compatibility with the real Databricks CLI. This is the Phase 5 stretch goal.
 - Multi-user auth, grants, row or column security.
 - Production hardening and high availability. Cloud targets (Cloudflare, MotherDuck) are deferred; the adapter rule in section 14 keeps them open.
-- A custom web UI beyond notebooks and the DuckDB UI.
+- ~~A custom web UI beyond notebooks and the DuckDB UI.~~ Lifted: a Databricks-style web UI is in scope (docs/adr/0009-web-ui-and-workspace.md).
 
 ## 2. Concept mapping
 
