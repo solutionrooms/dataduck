@@ -69,7 +69,7 @@ addopts = "-m 'not integration'"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src/duckbricks/core", "src/duckbricks/bundles"]
+files = ["src/duckbricks/core", "src/duckbricks/bundles", "src/duckbricks/warehouses"]
 mypy_path = "src"
 explicit_package_bases = true
 

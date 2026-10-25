@@ -20,6 +20,7 @@ from duckbricks.api.routes import (
     platform,
     statements,
     unity_catalog,
+    warehouses,
     workspace,
 )
 from duckbricks.core import db
@@ -29,7 +30,21 @@ from duckbricks.core.errors import ApiError
 from duckbricks.scheduler.loop import SchedulerLoop
 
 log = logging.getLogger("duckbricks.api")
+STARTER_WAREHOUSE = "Starter Warehouse"
 UI_DIST = REPO_ROOT / "ui" / "dist"
+
+
+def ensure_starter_warehouse() -> None:
+    """Databricks workspaces come with a starter warehouse; so does ours (stopped)."""
+    from duckbricks.warehouses import lifecycle
+
+    with db.get_engine(get_settings().control_url).begin() as conn:
+        if not lifecycle.list_rows(conn):
+            lifecycle.create(
+                conn,
+                {"name": STARTER_WAREHOUSE, "cluster_size": "Small", "auto_stop_mins": 10},
+                get_settings().user_name,
+            )
 
 
 @asynccontextmanager
@@ -39,6 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from duckbricks.api.deps import workspace as get_workspace
 
     get_workspace().ensure_home()
+    await run_in_threadpool(ensure_starter_warehouse)
     scheduler = SchedulerLoop()
     from duckbricks.api.background import register_steps
 
@@ -86,7 +102,7 @@ def health() -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
-for module in (unity_catalog, statements, jobs, workspace, platform, bundles):
+for module in (unity_catalog, statements, jobs, workspace, platform, bundles, warehouses):
     app.include_router(module.router, dependencies=[Depends(require_token)])
 
 
