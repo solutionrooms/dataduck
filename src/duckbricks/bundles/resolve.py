@@ -91,7 +91,8 @@ def load(root: Path) -> LoadedBundle:
         raise BundleError(f"No databricks.yml in {root}")
     config = _read_yaml(root_file)
     bundle = LoadedBundle(root=root, config=config, files=[root_file])
-    _record_origins(bundle, config, root_file.parent)
+    override_origins: dict[tuple[str, str], Path] = {}
+    _record_origins(bundle, config, root_file.parent, override_origins)
     for pattern in config.get("include") or []:
         matches = sorted(glob.glob(str(root / pattern), recursive=True))
         if not matches and not glob.has_magic(pattern):
@@ -103,20 +104,29 @@ def load(root: Path) -> LoadedBundle:
             part = _read_yaml(path)
             if "bundle" in part or "include" in part:
                 raise BundleError(f"{path}: included files cannot set 'bundle' or 'include'")
-            _record_origins(bundle, part, path.parent)
+            _record_origins(bundle, part, path.parent, override_origins)
             _merge_included(config, part, path)
             bundle.files.append(path)
+    # A resource defined only in a target override takes that file's directory.
+    for key, directory in override_origins.items():
+        bundle.origins.setdefault(key, directory)
     return bundle
 
 
-def _record_origins(bundle: LoadedBundle, part: dict[str, Any], directory: Path) -> None:
+def _record_origins(
+    bundle: LoadedBundle,
+    part: dict[str, Any],
+    directory: Path,
+    override_origins: dict[tuple[str, str], Path],
+) -> None:
+    """Relative paths resolve from the file that defines the resource, not from overrides."""
     for rtype, items in (part.get("resources") or {}).items():
         for key in items or {}:
             bundle.origins.setdefault((rtype, key), directory)
     for target in (part.get("targets") or {}).values():
         for rtype, items in ((target or {}).get("resources") or {}).items():
             for key in items or {}:
-                bundle.origins.setdefault((rtype, key), directory)
+                override_origins.setdefault((rtype, key), directory)
 
 
 def _merge_included(config: dict[str, Any], part: dict[str, Any], path: Path) -> None:
@@ -351,7 +361,7 @@ def resolve(
         workspace[key] = _strip_workspace_prefix(scope["workspace"][key])
         scope["workspace"][key] = workspace[key]
 
-    config = interpolate(config, scope)
+    config = _coerce_types(interpolate(config, scope))
     resources = config.setdefault("resources", {}) or {}
     for rtype in list(resources):
         if rtype not in SUPPORTED_RESOURCES:
@@ -370,6 +380,42 @@ def resolve(
     _apply_mode(resolved, mode, short)
     _translate_paths(resolved, loaded.origins)
     return resolved
+
+
+INTEGER_FIELDS = {
+    "max_retries",
+    "min_retry_interval_millis",
+    "timeout_seconds",
+    "max_concurrent_runs",
+    "job_id",
+    "interval",
+    "min_time_between_triggers_seconds",
+    "wait_after_last_change_seconds",
+    "num_workers",
+    "auto_stop_mins",
+}
+BOOLEAN_FIELDS = {
+    "retry_on_timeout",
+    "disabled",
+    "development",
+    "continuous",
+    "serverless",
+    "photon",
+    "full_refresh",
+}
+
+
+def _coerce_types(value: Any, key: str | None = None) -> Any:
+    """Variables are strings; like the Databricks CLI, give known fields their schema type."""
+    if isinstance(value, dict):
+        return {k: _coerce_types(v, k) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_coerce_types(v) for v in value]
+    if isinstance(value, str) and key in INTEGER_FIELDS and re.fullmatch(r"-?\d+", value):
+        return int(value)
+    if isinstance(value, str) and key in BOOLEAN_FIELDS and value.lower() in ("true", "false"):
+        return value.lower() == "true"
+    return value
 
 
 def _strip_workspace_prefix(path: str) -> str:

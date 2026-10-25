@@ -7,6 +7,7 @@ are rewritten to equivalent classes before the validator is built.
 from __future__ import annotations
 
 import json
+import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ def _rewrite(node: Any) -> Any:
 
 
 @lru_cache
+@lru_cache
 def validator() -> Draft202012Validator:
     path = SCHEMA_PATH if SCHEMA_PATH.exists() else PACKAGED_SCHEMA
     schema = _rewrite(json.loads(path.read_text()))
@@ -40,7 +42,11 @@ def validator() -> Draft202012Validator:
 def schema_errors(document: dict[str, Any], limit: int = 20) -> list[str]:
     """Human-readable schema violations, most specific first."""
     errors = []
-    for error in sorted(validator().iter_errors(document), key=lambda e: list(e.absolute_path)):
+    with warnings.catch_warnings():
+        # Some patterns in the Databricks schema are Go regexes that Python reads as nested sets.
+        warnings.simplefilter("ignore", FutureWarning)
+        found = sorted(validator().iter_errors(document), key=lambda e: list(e.absolute_path))
+    for error in found:
         location = ".".join(str(p) for p in error.absolute_path) or "(root)"
         message = error.message
         if error.validator == "additionalProperties":

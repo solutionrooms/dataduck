@@ -1,0 +1,145 @@
+{
+  "config": {
+    "bundle": {
+      "name": "edge_cases",
+      "target": "staging"
+    },
+    "include": [
+      "resources/*.yml"
+    ],
+    "presets": {
+      "name_prefix": "[staging] ",
+      "trigger_pause_status": "PAUSED"
+    },
+    "resources": {
+      "jobs": {
+        "cleanup": {
+          "name": "[staging] cleanup",
+          "tags": {},
+          "tasks": [
+            {
+              "spark_python_task": {
+                "python_file": "/Users/jane.doe@example.com/.bundle/edge_cases/staging/files/src/cleanup.py"
+              },
+              "task_key": "vacuum"
+            }
+          ]
+        },
+        "nightly": {
+          "email_notifications": {
+            "on_failure": [
+              "jane.doe@example.com"
+            ]
+          },
+          "max_concurrent_runs": 3,
+          "name": "[staging] nightly staging",
+          "parameters": [
+            {
+              "default": "{{job.start_time.iso_date}}",
+              "name": "run_date"
+            }
+          ],
+          "schedule": {
+            "pause_status": "PAUSED",
+            "quartz_cron_expression": "0 30 2 * * ?",
+            "timezone_id": "UTC"
+          },
+          "tags": {},
+          "tasks": [
+            {
+              "max_retries": 1,
+              "sql_task": {
+                "file": {
+                  "path": "/Users/jane.doe@example.com/.bundle/edge_cases/staging/files/src/load.sql"
+                },
+                "parameters": {
+                  "catalog": "staging",
+                  "note": "from_default"
+                },
+                "warehouse_id": "wh-123"
+              },
+              "task_key": "load",
+              "timeout_seconds": 600
+            },
+            {
+              "depends_on": [
+                {
+                  "task_key": "load"
+                }
+              ],
+              "notebook_task": {
+                "base_parameters": {
+                  "catalog": "staging",
+                  "owner": "jane_doe"
+                },
+                "notebook_path": "/Users/jane.doe@example.com/.bundle/edge_cases/staging/files/src/report.py"
+              },
+              "task_key": "report"
+            },
+            {
+              "depends_on": [
+                {
+                  "task_key": "report"
+                }
+              ],
+              "run_job_task": {
+                "job_id": "${resources.jobs.cleanup.id}"
+              },
+              "task_key": "downstream"
+            }
+          ]
+        }
+      }
+    },
+    "variables": {
+      "catalog": {
+        "default": "staging"
+      },
+      "env_var": {
+        "default": "from_default",
+        "description": "Overridden by BUNDLE_VAR_env_var in the test"
+      },
+      "retries": {
+        "default": "1",
+        "description": "Overridden by --var in the test"
+      },
+      "warehouse": {
+        "default": "wh-123"
+      }
+    },
+    "workspace": {
+      "artifact_path": "/Users/jane.doe@example.com/.bundle/edge_cases/staging/artifacts",
+      "file_path": "/Users/jane.doe@example.com/.bundle/edge_cases/staging/files",
+      "host": "https://adb-123.azuredatabricks.net",
+      "root_path": "/Users/jane.doe@example.com/.bundle/edge_cases/staging",
+      "state_path": "/Users/jane.doe@example.com/.bundle/edge_cases/staging/state"
+    }
+  },
+  "referenced_files": [
+    [
+      "resources.jobs.cleanup.tasks[vacuum].spark_python_task",
+      "src/cleanup.py"
+    ],
+    [
+      "resources.jobs.nightly.tasks[load].sql_task",
+      "src/load.sql"
+    ],
+    [
+      "resources.jobs.nightly.tasks[report].notebook_task",
+      "src/report.py"
+    ]
+  ],
+  "synced_files": [
+    "databricks.yml",
+    "resources/nightly.job.yml",
+    "revenue.lvdash.json",
+    "src/cleanup.py",
+    "src/load.sql",
+    "src/report.py"
+  ],
+  "target": "staging",
+  "warnings": [
+    "workspace.host is ignored (Duckbricks uses DBK_HOST)",
+    "resources.dashboards is not supported by Duckbricks and was ignored (1 item(s))"
+  ]
+}
