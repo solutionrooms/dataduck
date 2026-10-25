@@ -44,7 +44,40 @@ def _con() -> duckdb.DuckDBPyConnection:
 def _spark() -> Any:
     from sqlframe.duckdb import DuckDBSession
 
-    return DuckDBSession(conn=_con())
+    session = DuckDBSession(conn=_con())
+    original_sql = session.sql
+
+    def sql(sqlQuery: Any, dialect: Any = None, qualify: bool = True) -> Any:
+        if qualify and isinstance(sqlQuery, str):
+            _register_tables(session, sqlQuery, dialect)
+        return original_sql(sqlQuery, dialect=dialect, qualify=qualify)
+
+    session.sql = sql
+    return session
+
+
+def _register_tables(session: Any, query: str, dialect: Any) -> None:
+    """Teach SQLFrame the columns of qualified tables a query names.
+
+    `spark.sql` resolves columns only for tables SQLFrame has already seen (through
+    `spark.table`), so `SELECT x FROM dev.gold.t` would fail on a fresh session.
+    """
+    import contextlib
+
+    import sqlglot
+    from sqlglot import exp
+
+    try:
+        tree = sqlglot.parse_one(query, read=dialect or session.input_dialect)
+    except sqlglot.errors.ParseError:
+        return
+    ctes = {cte.alias_or_name for cte in tree.find_all(exp.CTE)}
+    for table in tree.find_all(exp.Table):
+        if not table.db or table.name in ctes:
+            continue
+        name = exp.table_(table.name, db=table.db, catalog=table.catalog or None)
+        with contextlib.suppress(Exception):
+            session.catalog.add_table(name)
 
 
 class _Api:
