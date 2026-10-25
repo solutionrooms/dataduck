@@ -1,0 +1,51 @@
+# Edge cases for bundle resolution: includes with keyed-list merges, variable precedence,
+# presets, per-target resource overrides, unsupported resources and fields.
+bundle:
+  name: edge_cases
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    default: dev
+  retries:
+    description: Overridden by --var in the test
+    default: "1"
+  env_var:
+    description: Overridden by BUNDLE_VAR_env_var in the test
+    default: from_default
+  warehouse:
+    default: wh-123
+
+workspace:
+  host: https://adb-123.azuredatabricks.net
+
+targets:
+  dev:
+    default: true
+    mode: development
+  staging:
+    presets:
+      name_prefix: "[staging] "
+      trigger_pause_status: PAUSED
+    variables:
+      catalog: staging
+    resources:
+      jobs:
+        nightly:
+          max_concurrent_runs: 3
+          tasks:
+            - task_key: load
+              timeout_seconds: 600
+  prod:
+    mode: production
+    variables:
+      catalog: prod
+
+resources:
+  dashboards:
+    revenue:
+      display_name: Revenue
+      file_path: ./revenue.lvdash.json
+      warehouse_id: ${var.warehouse}

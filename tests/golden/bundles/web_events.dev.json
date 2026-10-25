@@ -1,0 +1,89 @@
+{
+  "config": {
+    "bundle": {
+      "mode": "development",
+      "name": "web_events",
+      "target": "dev"
+    },
+    "include": [
+      "resources/*.yml"
+    ],
+    "resources": {
+      "jobs": {
+        "web_events_refresh": {
+          "description": "Refresh the pipeline when new event files arrive",
+          "name": "[dev jane_doe] web_events_refresh",
+          "tags": {
+            "dev": "jane_doe"
+          },
+          "tasks": [
+            {
+              "pipeline_task": {
+                "pipeline_id": "${resources.pipelines.web_events.id}"
+              },
+              "task_key": "refresh"
+            }
+          ],
+          "trigger": {
+            "file_arrival": {
+              "min_time_between_triggers_seconds": 60,
+              "url": "s3://landing/shop/events/"
+            },
+            "pause_status": "PAUSED"
+          }
+        }
+      },
+      "pipelines": {
+        "web_events": {
+          "catalog": "dev",
+          "development": true,
+          "libraries": [
+            {
+              "glob": {
+                "include": "/Users/jane.doe@example.com/.bundle/web_events/dev/files/src/pipeline/**"
+              }
+            }
+          ],
+          "name": "[dev jane_doe] web_events",
+          "schema": "web",
+          "serverless": true
+        }
+      },
+      "schemas": {
+        "web": {
+          "catalog_name": "dev",
+          "comment": "Web analytics built by the web_events pipeline",
+          "name": "web"
+        }
+      }
+    },
+    "variables": {
+      "catalog": {
+        "default": "dev",
+        "description": "Catalog for the web schema"
+      }
+    },
+    "workspace": {
+      "artifact_path": "/Users/jane.doe@example.com/.bundle/web_events/dev/artifacts",
+      "file_path": "/Users/jane.doe@example.com/.bundle/web_events/dev/files",
+      "root_path": "/Users/jane.doe@example.com/.bundle/web_events/dev",
+      "state_path": "/Users/jane.doe@example.com/.bundle/web_events/dev/state"
+    }
+  },
+  "referenced_files": [
+    [
+      "resources.pipelines.web_events.glob",
+      "src/pipeline"
+    ]
+  ],
+  "synced_files": [
+    "README.md",
+    "databricks.yml",
+    "resources/web_events.pipeline.yml",
+    "src/pipeline/01_bronze.sql",
+    "src/pipeline/02_silver.sql",
+    "src/pipeline/03_gold.sql"
+  ],
+  "target": "dev",
+  "warnings": []
+}

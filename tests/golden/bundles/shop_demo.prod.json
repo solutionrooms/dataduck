@@ -1,0 +1,144 @@
+{
+  "config": {
+    "bundle": {
+      "mode": "production",
+      "name": "shop_demo",
+      "target": "prod"
+    },
+    "include": [
+      "resources/*.yml"
+    ],
+    "resources": {
+      "jobs": {
+        "shop_daily": {
+          "description": "Ingest landing CSVs to bronze, build silver and gold with dbt, check quality",
+          "email_notifications": {
+            "on_failure": [
+              "jane.doe@example.com"
+            ]
+          },
+          "max_concurrent_runs": 1,
+          "name": "shop_daily",
+          "schedule": {
+            "quartz_cron_expression": "0 0 6 * * ?",
+            "timezone_id": "Europe/London"
+          },
+          "tags": {
+            "project": "shop_demo"
+          },
+          "tasks": [
+            {
+              "sql_task": {
+                "file": {
+                  "path": "/Users/jane.doe@example.com/.bundle/shop_demo/prod/files/src/ingest_bronze.sql"
+                },
+                "parameters": {
+                  "catalog": "prod",
+                  "schema": "bronze"
+                },
+                "warehouse_id": "starter"
+              },
+              "task_key": "ingest_bronze"
+            },
+            {
+              "dbt_task": {
+                "catalog": "prod",
+                "commands": [
+                  "dbt build"
+                ],
+                "project_directory": "/Users/jane.doe@example.com/.bundle/shop_demo/prod/files/dbt",
+                "schema": "silver"
+              },
+              "depends_on": [
+                {
+                  "task_key": "ingest_bronze"
+                }
+              ],
+              "task_key": "transform"
+            },
+            {
+              "depends_on": [
+                {
+                  "task_key": "transform"
+                }
+              ],
+              "spark_python_task": {
+                "parameters": [
+                  "--catalog",
+                  "prod"
+                ],
+                "python_file": "/Users/jane.doe@example.com/.bundle/shop_demo/prod/files/src/quality_checks.py"
+              },
+              "task_key": "quality_checks"
+            }
+          ]
+        }
+      },
+      "schemas": {
+        "bronze": {
+          "catalog_name": "prod",
+          "comment": "Raw landing data, appended file by file",
+          "name": "bronze"
+        },
+        "gold": {
+          "catalog_name": "prod",
+          "comment": "Business aggregates",
+          "name": "gold"
+        },
+        "silver": {
+          "catalog_name": "prod",
+          "comment": "Cleaned, deduplicated and typed",
+          "name": "silver"
+        }
+      }
+    },
+    "variables": {
+      "catalog": {
+        "default": "prod",
+        "description": "Catalog that holds the bronze, silver and gold schemas"
+      },
+      "warehouse_id": {
+        "default": "starter",
+        "description": "SQL warehouse for sql_task (Duckbricks runs sql_task on the worker)"
+      }
+    },
+    "workspace": {
+      "artifact_path": "/Users/jane.doe@example.com/.bundle/shop_demo/prod/artifacts",
+      "file_path": "/Users/jane.doe@example.com/.bundle/shop_demo/prod/files",
+      "root_path": "/Users/jane.doe@example.com/.bundle/shop_demo/prod",
+      "state_path": "/Users/jane.doe@example.com/.bundle/shop_demo/prod/state"
+    }
+  },
+  "referenced_files": [
+    [
+      "resources.jobs.shop_daily.tasks[ingest_bronze].sql_task",
+      "src/ingest_bronze.sql"
+    ],
+    [
+      "resources.jobs.shop_daily.tasks[quality_checks].spark_python_task",
+      "src/quality_checks.py"
+    ],
+    [
+      "resources.jobs.shop_daily.tasks[transform].dbt_task",
+      "dbt"
+    ]
+  ],
+  "synced_files": [
+    "README.md",
+    "databricks.yml",
+    "dbt/dbt_project.yml",
+    "dbt/macros/generate_schema_name.sql",
+    "dbt/models/gold/daily_revenue.sql",
+    "dbt/models/gold/schema.yml",
+    "dbt/models/silver/customers.sql",
+    "dbt/models/silver/orders.sql",
+    "dbt/models/silver/schema.yml",
+    "dbt/models/sources.yml",
+    "resources/schemas.yml",
+    "resources/shop_daily.job.yml",
+    "src/ingest_bronze.sql",
+    "src/quality_checks.py"
+  ],
+  "target": "prod",
+  "warnings": []
+}

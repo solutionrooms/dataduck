@@ -1,0 +1,8 @@
+models:
+  - name: daily_revenue
+    description: Orders, customers and revenue per day
+    columns:
+      - name: order_date
+        data_tests: [unique, not_null]
+      - name: revenue
+        data_tests: [not_null]

@@ -1,0 +1,28 @@
+# Shop demo: raw CSVs land in s3://landing/shop/, one job builds bronze -> silver -> gold.
+# The same file deploys to Databricks; on Duckbricks the SQL is DuckDB SQL.
+bundle:
+  name: shop_demo
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Catalog that holds the bronze, silver and gold schemas
+    default: dev
+  warehouse_id:
+    description: SQL warehouse for sql_task (Duckbricks runs sql_task on the worker)
+    default: starter
+
+targets:
+  dev:
+    default: true
+    mode: development
+    variables:
+      catalog: dev
+  prod:
+    mode: production
+    variables:
+      catalog: prod
+    workspace:
+      root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

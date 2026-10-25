@@ -1,0 +1,29 @@
+resources:
+  schemas:
+    web:
+      catalog_name: ${var.catalog}
+      name: web
+      comment: Web analytics built by the web_events pipeline
+
+  pipelines:
+    web_events:
+      name: web_events
+      catalog: ${var.catalog}
+      schema: web
+      serverless: true
+      libraries:
+        - glob:
+            include: ../src/pipeline/**
+
+  jobs:
+    web_events_refresh:
+      name: web_events_refresh
+      description: Refresh the pipeline when new event files arrive
+      trigger:
+        file_arrival:
+          url: s3://landing/shop/events/
+          min_time_between_triggers_seconds: 60
+      tasks:
+        - task_key: refresh
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.web_events.id}

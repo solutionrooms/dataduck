@@ -1,0 +1,39 @@
+resources:
+  jobs:
+    nightly:
+      name: nightly ${bundle.target}
+      schedule:
+        quartz_cron_expression: "0 30 2 * * ?"
+        timezone_id: UTC
+      parameters:
+        - name: run_date
+          default: "{{job.start_time.iso_date}}"
+      email_notifications:
+        on_failure: ["${workspace.current_user.userName}"]
+      tasks:
+        - task_key: load
+          max_retries: ${var.retries}
+          sql_task:
+            warehouse_id: ${var.warehouse}
+            file:
+              path: ../src/load.sql
+            parameters:
+              catalog: ${var.catalog}
+              note: ${var.env_var}
+        - task_key: report
+          depends_on: [{task_key: load}]
+          notebook_task:
+            notebook_path: ../src/report.py
+            base_parameters:
+              catalog: ${var.catalog}
+              owner: ${workspace.current_user.short_name}
+        - task_key: downstream
+          depends_on: [{task_key: report}]
+          run_job_task:
+            job_id: ${resources.jobs.cleanup.id}
+    cleanup:
+      name: cleanup
+      tasks:
+        - task_key: vacuum
+          spark_python_task:
+            python_file: ../src/cleanup.py

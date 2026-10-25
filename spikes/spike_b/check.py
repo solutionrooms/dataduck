@@ -70,8 +70,34 @@ def verify(driver: str) -> int:
     return 0
 
 
+def lineage(info_schema_dir: str) -> None:
+    """Print the column lineage dbt's static analysis wrote (full distribution only)."""
+    con = open_session("dbk.small", catalogs=[])
+    try:
+        rows = con.execute(
+            f"SELECT * FROM read_parquet('{info_schema_dir}/dbt.column_lineage.parquet') LIMIT 20"
+        ).fetchall()
+        cols = [d[0] for d in con.description]
+        for name in ("models", "sources", "dag_nodes", "edges"):
+            described = con.execute(
+                f"DESCRIBE SELECT * FROM read_parquet('{info_schema_dir}/dbt.{name}.parquet')"
+            ).fetchall()
+            print(f"dbt.{name} columns: {[d[0] for d in described]}")
+            sample = con.execute(
+                f"SELECT * FROM read_parquet('{info_schema_dir}/dbt.{name}.parquet') LIMIT 2"
+            ).fetchall()
+            print(f"dbt.{name} sample: {sample}")
+    finally:
+        con.close()
+    print(f"column_lineage columns: {cols}")
+    for row in rows:
+        print(row)
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "seed":
         seed()
+    elif sys.argv[1] == "lineage":
+        lineage(sys.argv[2])
     else:
         sys.exit(verify(sys.argv[2]))

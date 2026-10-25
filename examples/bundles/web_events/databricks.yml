@@ -1,0 +1,20 @@
+# Web events: a Lakeflow Declarative Pipeline (SQL) refreshed when new files land.
+bundle:
+  name: web_events
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Catalog for the web schema
+    default: dev
+
+targets:
+  dev:
+    default: true
+    mode: development
+  prod:
+    mode: production
+    variables:
+      catalog: prod
