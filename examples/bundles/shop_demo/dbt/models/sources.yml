@@ -1,0 +1,9 @@
+sources:
+  - name: bronze
+    database: "{{ env_var('DBK_CATALOG', 'dev') }}"
+    schema: bronze
+    tables:
+      - name: orders_raw
+        description: Raw order lines, one row per CSV line, all columns as text
+      - name: customers_raw
+        description: Latest customer snapshot

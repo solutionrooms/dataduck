@@ -1,0 +1,14 @@
+resources:
+  schemas:
+    bronze:
+      catalog_name: ${var.catalog}
+      name: bronze
+      comment: Raw landing data, appended file by file
+    silver:
+      catalog_name: ${var.catalog}
+      name: silver
+      comment: Cleaned, deduplicated and typed
+    gold:
+      catalog_name: ${var.catalog}
+      name: gold
+      comment: Business aggregates

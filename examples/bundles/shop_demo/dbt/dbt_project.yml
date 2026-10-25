@@ -1,0 +1,15 @@
+name: shop_demo
+version: "1.0"
+profile: shop_demo
+model-paths: ["models"]
+macro-paths: ["macros"]
+
+models:
+  shop_demo:
+    +materialized: table
+    # Duckbricks passes the dbt_task catalog as DBK_CATALOG; it names a catalogs.yml entry.
+    +catalog_name: "{{ env_var('DBK_CATALOG', 'dev') }}"
+    silver:
+      +schema: silver
+    gold:
+      +schema: gold

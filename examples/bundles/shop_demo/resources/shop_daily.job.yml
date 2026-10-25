@@ -1,0 +1,42 @@
+resources:
+  jobs:
+    shop_daily:
+      name: shop_daily
+      description: Ingest landing CSVs to bronze, build silver and gold with dbt, check quality
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: Europe/London
+      tags:
+        project: shop_demo
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      tasks:
+        - task_key: ingest_bronze
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/ingest_bronze.sql
+            parameters:
+              catalog: ${var.catalog}
+              schema: bronze
+
+        - task_key: transform
+          depends_on:
+            - task_key: ingest_bronze
+          dbt_task:
+            project_directory: ../dbt
+            commands:
+              - dbt build
+            catalog: ${var.catalog}
+            schema: silver
+
+        - task_key: quality_checks
+          depends_on:
+            - task_key: transform
+          spark_python_task:
+            python_file: ../src/quality_checks.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
