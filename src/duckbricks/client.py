@@ -100,6 +100,12 @@ class DuckbricksClient:
     def post(self, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         return self.request("POST", path, json=body or {})
 
+    def put(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        return self.request("PUT", path, json=body)
+
+    def patch(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        return self.request("PATCH", path, json=body)
+
     def delete(self, url: str, /, **params: Any) -> dict[str, Any]:
         return self.request(
             "DELETE", url, params={k: v for k, v in params.items() if v is not None}
