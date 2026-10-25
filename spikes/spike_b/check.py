@@ -78,6 +78,15 @@ def lineage(info_schema_dir: str) -> None:
             f"SELECT * FROM read_parquet('{info_schema_dir}/dbt.column_lineage.parquet') LIMIT 20"
         ).fetchall()
         cols = [d[0] for d in con.description]
+        for name in ("models", "sources", "dag_nodes", "edges"):
+            described = con.execute(
+                f"DESCRIBE SELECT * FROM read_parquet('{info_schema_dir}/dbt.{name}.parquet')"
+            ).fetchall()
+            print(f"dbt.{name} columns: {[d[0] for d in described]}")
+            sample = con.execute(
+                f"SELECT * FROM read_parquet('{info_schema_dir}/dbt.{name}.parquet') LIMIT 2"
+            ).fetchall()
+            print(f"dbt.{name} sample: {sample}")
     finally:
         con.close()
     print(f"column_lineage columns: {cols}")

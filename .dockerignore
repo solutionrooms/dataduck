@@ -8,3 +8,6 @@
 data
 target
 logs
+ui/node_modules
+ui/dist
+spikes

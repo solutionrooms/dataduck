@@ -10,6 +10,16 @@ x-dbk-env: &dbk-env
   DBK_S3_SECRET_KEY: ${DBK_S3_SECRET_KEY:?set in .env}
   DBK_TOKEN: ${DBK_TOKEN:?set in .env}
   DBK_NODE_TYPES_FILE: /app/config/node_types.yml
+  DBK_USER_NAME: ${DBK_USER_NAME:-user@duckbricks.local}
+  DBK_HOST: http://api:8080
+  DBK_PUBLIC_URL: http://127.0.0.1:${DBK_API_PORT:-8080}
+  DBK_WORKSPACE_ROOT: /data/workspace
+  DBK_LOGS_ROOT: /data/logs
+  DBK_WAREHOUSE_AGENT_URL: http://warehouse:9400
+  DBK_WAREHOUSE_HOST: warehouse
+  DBK_WAREHOUSE_TOKEN: ${DBK_WAREHOUSE_TOKEN:?set in .env}
+  DBK_NOTEBOOKS_URL: http://127.0.0.1:${DBK_NOTEBOOKS_PORT:-2718}
+  DBK_NOTEBOOKS_TOKEN: ${DBK_NOTEBOOKS_TOKEN:?set in .env}
 
 services:
   postgres:
@@ -60,7 +70,8 @@ services:
   api:
     build:
       context: .
-      dockerfile: docker/api.Dockerfile
+      dockerfile: docker/Dockerfile
+      target: api
     image: duckbricks-api:dev
     environment:
       <<: *dbk-env
@@ -81,18 +92,57 @@ services:
       retries: 30
       start_period: 10s
 
-  # Phase 0 uses the worker image for the spikes (it carries dbt). Phase 1 adds the queue loop.
   worker:
     build:
       context: .
-      dockerfile: docker/worker.Dockerfile
+      dockerfile: docker/Dockerfile
+      target: worker
+      args:
+        DBT_DISTRIBUTION: ${DBK_DBT_DISTRIBUTION:-full}
     image: duckbricks-worker:dev
-    profiles: ["worker"]
     environment:
       <<: *dbk-env
+      DBK_WORKER_SLOTS: ${DBK_WORKER_SLOTS:-4}
     volumes:
       - workspace:/data/workspace
       - logs:/data/logs
+    depends_on:
+      api:
+        condition: service_healthy
+    stop_grace_period: 20s
+
+  warehouse:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: warehouse
+    image: duckbricks-warehouse:dev
+    environment:
+      <<: *dbk-env
+    ports:
+      # Quack servers, one port per running warehouse, for DuckDB clients on the host.
+      - "127.0.0.1:9500-9509:9500-9509"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9400/health', timeout=2).status == 200 else 1)"]
+      interval: 5s
+      timeout: 4s
+      retries: 30
+
+  notebooks:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: notebooks
+    image: duckbricks-notebooks:dev
+    environment:
+      <<: *dbk-env
+    ports:
+      - "127.0.0.1:${DBK_NOTEBOOKS_PORT:-2718}:2718"
+    volumes:
+      - workspace:/data/workspace
     depends_on:
       api:
         condition: service_healthy
