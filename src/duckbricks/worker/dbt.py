@@ -157,7 +157,9 @@ def run_dbt_task(ex: Execution, task: dict[str, Any]) -> Outcome:
                 code = run_subprocess(ex, argv, env, project, timeout)
                 if code != 0:
                     raise TaskFailed(f"'{command}' failed with exit code {code}")
-            if os.environ.get("DBK_DBT_DISTRIBUTION", "full") == "full":
+            if spec.get("_check"):
+                pass  # a `dbt check` compile records nothing
+            elif os.environ.get("DBK_DBT_DISTRIBUTION", "full") == "full":
                 capture_lineage(ex, project, env, generated, timeout)
             else:
                 ex.log("dbt-oss build: column lineage capture skipped (ADR 0006)")
