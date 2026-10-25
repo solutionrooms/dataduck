@@ -1,0 +1,33 @@
+{
+  "enabledMcpjsonServers": [
+    "duckbricks"
+  ],
+  "permissions": {
+    "allow": [
+      "mcp__duckbricks__platform_status",
+      "mcp__duckbricks__catalog_browse",
+      "mcp__duckbricks__table_describe",
+      "mcp__duckbricks__sql_query",
+      "mcp__duckbricks__jobs_list",
+      "mcp__duckbricks__job_get",
+      "mcp__duckbricks__runs_list",
+      "mcp__duckbricks__run_get",
+      "mcp__duckbricks__bundle_validate",
+      "mcp__duckbricks__dbt_check",
+      "mcp__duckbricks__lineage_get",
+      "mcp__duckbricks__pipelines_list"
+    ],
+    "ask": [
+      "mcp__duckbricks__sql_execute",
+      "mcp__duckbricks__catalog_create",
+      "mcp__duckbricks__schema_create",
+      "mcp__duckbricks__job_run_now",
+      "mcp__duckbricks__run_cancel",
+      "mcp__duckbricks__bundle_deploy",
+      "mcp__duckbricks__bundle_destroy",
+      "mcp__duckbricks__warehouse_start",
+      "mcp__duckbricks__warehouse_stop",
+      "mcp__duckbricks__pipeline_start_update"
+    ]
+  }
+}

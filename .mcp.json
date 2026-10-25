@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "duckbricks": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--quiet", "dbk-mcp"],
+      "env": {
+        "DBK_HOST": "http://127.0.0.1:8080"
+      }
+    }
+  }
+}
