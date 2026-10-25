@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 from sqlalchemy import delete, insert, select
 
 from duckbricks.core import db
-from duckbricks.core.config import Settings, get_settings
+from duckbricks.core.config import REPO_ROOT, Settings, get_settings
 from duckbricks.core.errors import AlreadyExists, InvalidParameter, NotFound
 
 TRASH_DIR = ".trash"
@@ -79,8 +79,14 @@ class Workspace:
         return "/" + local.relative_to(self.root).as_posix() if local != self.root else "/"
 
     def ensure_home(self) -> None:
-        for path in (f"/Users/{self.settings.user_name}", "/Shared"):
-            self.local(path).mkdir(parents=True, exist_ok=True)
+        """Create the user's home and /Shared; a new home gets the starter notebook."""
+        home = self.local(f"/Users/{self.settings.user_name}")
+        new_home = not home.exists()
+        for path in (home, self.local("/Shared")):
+            path.mkdir(parents=True, exist_ok=True)
+        starter = REPO_ROOT / "examples" / "notebooks" / "getting_started.py"
+        if new_home and starter.exists():
+            (home / "Getting started.py").write_text(starter.read_text())
 
     # --- reads -------------------------------------------------------------------------
 

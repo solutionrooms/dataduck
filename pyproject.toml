@@ -32,6 +32,9 @@ dbk-mcp = "duckbricks.mcp.server:main"
 [project.optional-dependencies]
 notebooks = [
     "marimo>=0.25.2",
+    "pandas>=3.1.0",
+    "polars>=2.0.0",
+    "pyarrow>=26.0.0",
 ]
 
 [dependency-groups]
