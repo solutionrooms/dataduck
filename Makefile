@@ -7,8 +7,8 @@ COMPOSE := docker compose
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
 
-env: ## Create .env from .env.example with random secrets (no-op if it exists)
-	@test -f .env || uv run python scripts/make_env.py
+env: ## Create .env (or add missing settings) with random secrets
+	@uv run python scripts/make_env.py
 
 up: env ## Start the platform and wait until healthy
 	$(COMPOSE) up -d --build --wait
@@ -36,10 +36,10 @@ test-integration: ## Integration tests against the running stack
 	uv run pytest -q -m integration
 
 spike-a: ## Spike A: concurrent DuckLake writers in two processes
-	$(COMPOSE) --profile worker run --rm --build -v ./spikes:/app/spikes:ro worker python /app/spikes/spike_a.py
+	$(COMPOSE) run --rm --no-deps -v ./spikes:/app/spikes:ro worker python /app/spikes/spike_a.py
 
 spike-b: ## Spike B: dbt v2 builds a model into DuckLake
-	$(COMPOSE) --profile worker run --rm --build -v ./spikes:/app/spikes:ro worker bash /app/spikes/spike_b/run.sh
+	$(COMPOSE) run --rm --no-deps -v ./spikes:/app/spikes:ro worker bash /app/spikes/spike_b/run.sh
 
 spikes: spike-a spike-b ## Run both spikes
 

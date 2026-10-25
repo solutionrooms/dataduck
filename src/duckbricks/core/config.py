@@ -38,6 +38,34 @@ class Settings(BaseSettings):
     node_types_file: Path = REPO_ROOT / "config" / "node_types.yml"
     token: SecretStr = SecretStr("")
 
+    # The single platform user (`workspace.current_user.userName` in bundles).
+    user_name: str = "user@duckbricks.local"
+    # Where the API is reached from task code, the CLI and the MCP server.
+    host: str = "http://127.0.0.1:8080"
+    # Where a browser reaches the UI (run_page_url and links). Same as `host` on the host side.
+    public_url: str = "http://127.0.0.1:8080"
+
+    workspace_root: Path = REPO_ROOT / "data" / "workspace"
+    logs_root: Path = REPO_ROOT / "data" / "logs"
+    worker_slots: int = 4
+    api_node_type: str = "dbk.medium"
+
+    # Warehouses (Quack) and notebooks (marimo).
+    warehouse_agent_url: str = "http://127.0.0.1:9400"
+    warehouse_host: str = "127.0.0.1"
+    warehouse_token: SecretStr = SecretStr("")
+    notebooks_url: str = "http://127.0.0.1:2718"
+    notebooks_token: SecretStr = SecretStr("")
+
+    @property
+    def user_short_name(self) -> str:
+        """`workspace.current_user.short_name`: the user name up to `@`, Databricks-style."""
+        return self.user_name.split("@", 1)[0].replace(".", "_")
+
+    @property
+    def lake_url(self) -> str:
+        return self._pg_url(self.lake_db)
+
     @property
     def control_url(self) -> str:
         """SQLAlchemy URL for the control database."""

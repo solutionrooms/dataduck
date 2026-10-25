@@ -77,11 +77,13 @@ def open_session(
     *,
     catalogs: Sequence[CatalogAttachment] | None = None,
     settings: Settings | None = None,
+    system_catalog: bool = False,
 ) -> duckdb.DuckDBPyConnection:
     """Open a DuckDB connection with every registered catalog attached.
 
     `catalogs` defaults to the registry in the control database; pass a list to attach
     a specific set (bootstrap does this before the registry row exists).
+    `system_catalog` adds the read-only `sys` catalog (views over the control database).
     """
     settings = settings or get_settings()
     if not isinstance(node_type, NodeType):
@@ -102,6 +104,10 @@ def open_session(
             con.execute(statement)
         for catalog in catalogs:
             con.execute(attach_statement(catalog, settings, read_only))
+        if system_catalog:
+            from duckbricks.core.system_catalog import attach_system_catalog
+
+            attach_system_catalog(con, settings)
         if default_catalog is not None:
             schema = default_schema or DEFAULT_SCHEMA
             con.execute(f"USE {sql_identifier(default_catalog)}.{sql_identifier(schema)}")

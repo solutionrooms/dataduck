@@ -22,10 +22,16 @@ dependencies = [
     "jsonschema>=4.26.0",
     "mcp>=2.3.0",
     "sqlglot>=30.24.0",
+    "sqlframe>=4.7.0",
 ]
 
 [project.scripts]
 dbk = "duckbricks.cli.main:app"
+
+[project.optional-dependencies]
+notebooks = [
+    "marimo>=0.25.2",
+]
 
 [dependency-groups]
 dev = [
