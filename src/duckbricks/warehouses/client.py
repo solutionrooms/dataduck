@@ -49,11 +49,32 @@ def literal(value: Any) -> str:
 
 
 def inline_parameters(sql: str, params: dict[str, Any]) -> str:
+    """Replace `$name` markers with literals, outside quotes and comments."""
     if not params:
         return sql
-    return _MARKER.sub(
-        lambda m: literal(params[m.group(1)]) if m.group(1) in params else m.group(0), sql
-    )
+    out: list[str] = []
+    i, n = 0, len(sql)
+    while i < n:
+        ch = sql[i]
+        if ch in ("'", '"'):
+            end = i + 1
+            while end < n and not (sql[end] == ch and sql[end + 1 : end + 2] != ch):
+                end += 2 if sql[end] == ch else 1
+            out.append(sql[i : end + 1])
+            i = end + 1
+        elif sql.startswith("--", i) or sql.startswith("/*", i):
+            close = "\n" if sql.startswith("--", i) else "*/"
+            end = sql.find(close, i + 2)
+            end = n if end < 0 else end + len(close)
+            out.append(sql[i:end])
+            i = end
+        elif (match := _MARKER.match(sql, i)) and match.group(1) in params:
+            out.append(literal(params[match.group(1)]))
+            i = match.end()
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
 
 
 def run_on_warehouse(
