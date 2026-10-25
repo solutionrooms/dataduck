@@ -31,6 +31,11 @@ def warehouse_router(warehouse_id: str) -> WarehouseRunner | None:
     def run(
         sql: str, params: dict[str, Any], row_limit: int, catalog: str | None, schema: str | None
     ) -> QueryResult:
-        return run_on_warehouse(port, sql, params, row_limit, catalog, schema, settings, catalogs)
+        from duckbricks.federation.live import preparer
+
+        prelude = preparer(settings)(sql, catalog, schema)
+        return run_on_warehouse(
+            port, sql, params, row_limit, catalog, schema, settings, catalogs, prelude
+        )
 
     return run

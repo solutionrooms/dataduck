@@ -58,6 +58,8 @@ class SqlEngine:
             self._attached[read_only].discard(name)
         for attachment in current:
             if attachment.name not in self._attached[read_only]:
+                # The name may hold a live remote catalog (switched to mirror): replace it.
+                con.execute(f"DETACH DATABASE IF EXISTS {sql_identifier(attachment.name)}")
                 con.execute(attach_statement(attachment, self.settings, read_only))
                 self._attached[read_only].add(attachment.name)
         self._synced_at[read_only] = time.monotonic()

@@ -25,9 +25,10 @@ def control() -> Iterator[Connection]:
 
 @lru_cache
 def statement_service() -> StatementService:
+    from duckbricks.federation.live import preparer
     from duckbricks.warehouses.router import warehouse_router
 
-    return StatementService(get_sql_engine(), router=warehouse_router)
+    return StatementService(get_sql_engine(), router=warehouse_router, prelude=preparer())
 
 
 @lru_cache

@@ -33,6 +33,10 @@ def main() -> int:
         default_catalog=params.get("catalog") or "workspace",
         default_schema=params.get("schema"),
     )
+    from duckbricks.federation.live import preparer
+
+    prelude = preparer()
+    default_catalog, default_schema = params.get("catalog") or "workspace", params.get("schema")
     statements = con.extract_statements(sql)
     print(f"Running {len(statements)} statement(s) from {spec['workspace_path']}", flush=True)
     outcome: dict[str, Any] = {"sql_output": {"statements": len(statements)}}
@@ -46,6 +50,8 @@ def main() -> int:
                 f"Statement {i} uses parameter(s) {', '.join(missing)} that the task does not set"
             )
         started = time.monotonic()
+        for setup in prelude(statement.query, default_catalog, default_schema):
+            con.execute(setup)
         relation = con.execute(statement.query, bound) if bound else con.execute(statement.query)
         elapsed = time.monotonic() - started
         if relation.description:

@@ -480,9 +480,14 @@ def _sync(sync_id: int, settings: Settings, counts: dict[str, int]) -> tuple[str
                 changed = True
                 with engine.begin() as conn:
                     update_state(
-                        conn, catalog, action.schema, action.name,
-                        status=action.status, checked_at=now, error=None,
-                    )  # fmt: skip
+                        conn,
+                        catalog,
+                        action.schema,
+                        action.name,
+                        status=action.status,
+                        checked_at=now,
+                        error=None,
+                    )
                 log.warning("mirror %s: dropped %s (%s)", catalog, action.key, action.reason)
                 continue
             assert action.table is not None
@@ -499,9 +504,15 @@ def _sync(sync_id: int, settings: Settings, counts: dict[str, int]) -> tuple[str
                 log.warning("mirror %s: %s failed: %s", catalog, t.key, exc)
                 with engine.begin() as conn:
                     save_state(
-                        conn, catalog, t.schema, t.name,
-                        table_type=kind, status="FAILED", error=str(exc)[:2000], checked_at=now,
-                    )  # fmt: skip
+                        conn,
+                        catalog,
+                        t.schema,
+                        t.name,
+                        table_type=kind,
+                        status="FAILED",
+                        error=str(exc)[:2000],
+                        checked_at=now,
+                    )
                 continue
             changed = True
             counts["copied"] += 1
@@ -509,16 +520,29 @@ def _sync(sync_id: int, settings: Settings, counts: dict[str, int]) -> tuple[str
             elapsed = time.monotonic() - started
             with engine.begin() as conn:
                 save_state(
-                    conn, catalog, t.schema, t.name,
-                    table_type=kind, status="SYNCED", remote_version=t.version, filter=predicate,
-                    rows=rows, duration_ms=int(elapsed * 1000), error=None,
-                    synced_at=datetime.now(UTC), checked_at=now,
-                )  # fmt: skip
+                    conn,
+                    catalog,
+                    t.schema,
+                    t.name,
+                    table_type=kind,
+                    status="SYNCED",
+                    remote_version=t.version,
+                    filter=predicate,
+                    rows=rows,
+                    duration_ms=int(elapsed * 1000),
+                    error=None,
+                    synced_at=datetime.now(UTC),
+                    checked_at=now,
+                )
             log.warning(
                 "mirror %s: copied %s, %s rows in %.0fs (%s)%s",
-                catalog, t.key, rows, elapsed, action.reason,
+                catalog,
+                t.key,
+                rows,
+                elapsed,
+                action.reason,
                 f" where {applied}" if applied else "",
-            )  # fmt: skip
+            )
         if changed:
             lake = sql_literal(catalog)
             cutoff = f"now() - INTERVAL '{config.keep_history_hours} hours'"

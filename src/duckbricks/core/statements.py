@@ -261,6 +261,9 @@ def run_query(
 # plus a cancel hook, or None to run in-process.
 WarehouseRunner = Callable[[str, dict[str, Any], int, str | None, str | None], QueryResult]
 WarehouseRouter = Callable[[str], WarehouseRunner | None]
+# Statements to run before a statement in the same session (live foreign catalogs, ADR 0013):
+# (sql, default catalog, default schema) -> statements.
+Prelude = Callable[[str, str | None, str | None], list[str]]
 
 
 class StatementService:
@@ -269,10 +272,12 @@ class StatementService:
         engine: SqlEngine,
         settings: Settings | None = None,
         router: WarehouseRouter | None = None,
+        prelude: Prelude | None = None,
     ):
         self.engine = engine
         self.settings = settings or get_settings()
         self.router = router
+        self.prelude = prelude
         self._runs: OrderedDict[str, StatementRun] = OrderedDict()
         self._lock = threading.Lock()
 
@@ -339,9 +344,12 @@ class StatementService:
                     sql, params, row_limit, request.get("catalog"), request.get("schema")
                 )
             else:
-                cur = self.engine.cursor(read_only, request.get("catalog"), request.get("schema"))
+                catalog, schema = request.get("catalog"), request.get("schema")
+                cur = self.engine.cursor(read_only, catalog, schema)
                 run.cursor = cur
                 try:
+                    for statement in self.prelude(sql, catalog, schema) if self.prelude else []:
+                        cur.execute(statement)
                     run.result = run_query(cur, sql, params, row_limit)
                 finally:
                     cur.close()

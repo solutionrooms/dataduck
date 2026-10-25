@@ -15,7 +15,7 @@ from duckbricks.core.catalogs import (
     update_catalog,
 )
 from duckbricks.core.config import Settings, get_settings
-from duckbricks.core.errors import AlreadyExists, InvalidParameter, NotFound
+from duckbricks.core.errors import AlreadyExists, ApiError, InvalidParameter, NotFound
 from duckbricks.core.session import sql_identifier, sql_literal
 from duckbricks.core.sql_engine import SqlEngine
 from duckbricks.core.statements import type_name
@@ -167,8 +167,29 @@ class UnityCatalog:
     def _require_catalog(self, catalog: str) -> None:
         self.get_catalog(catalog)
 
+    def _live(self, catalog: str) -> Any:
+        """The live foreign catalog of this name, if it is one (ADR 0013)."""
+        from duckbricks.federation.live import find_live
+
+        return find_live(catalog, self.settings)
+
+    @staticmethod
+    def _remote(call: Any) -> Any:
+        """Run a call against the remote workspace; report its errors as API errors."""
+        from duckbricks.federation.databricks import DatabricksError
+
+        try:
+            return call()
+        except DatabricksError as exc:
+            status = exc.status if exc.status in (400, 403, 404) else 502
+            raise ApiError(str(exc), exc.error_code, status) from None
+
     def list_schemas(self, catalog: str) -> list[dict[str, Any]]:
         self._require_catalog(catalog)
+        if live := self._live(catalog):
+            from duckbricks.federation.live import browse_schemas
+
+            return list(self._remote(lambda: browse_schemas(live)))
         cur = self.engine.cursor(read_only=True)
         try:
             rows = cur.execute(
@@ -265,6 +286,13 @@ class UnityCatalog:
     def list_tables(
         self, catalog: str, schema: str, name_pattern: str | None = None
     ) -> list[dict[str, Any]]:
+        if live := self._live(catalog):
+            from duckbricks.federation.live import browse_tables
+
+            tables = self._remote(lambda: browse_tables(live, schema))
+            return [
+                t for t in tables if not name_pattern or name_pattern.lower() in t["name"].lower()
+            ]
         self.get_schema(f"{catalog}.{schema}")
         cur = self.engine.cursor(read_only=True)
         try:
@@ -312,6 +340,10 @@ class UnityCatalog:
         if len(parts) != 3:
             raise InvalidParameter(f"Table name '{full_name}' must be catalog.schema.table")
         catalog, schema, table = parts
+        if live := self._live(catalog):
+            from duckbricks.federation.live import browse_table
+
+            return dict(self._remote(lambda: browse_table(live, schema, table)))
         matches = [t for t in self.list_tables(catalog, schema) if t["name"] == table]
         if not matches:
             raise NotFound(
@@ -355,6 +387,8 @@ class UnityCatalog:
         return info
 
     def table_history(self, full_name: str, limit: int = 50) -> list[dict[str, Any]]:
+        if self._live(full_name.split(".")[0]):
+            return []  # snapshots are DuckLake's; a live table's history stays in Databricks
         """DuckLake snapshots that changed a table (Duckbricks extension, like DESCRIBE HISTORY)."""
         catalog, schema, table = full_name.split(".")
         if catalog == SYSTEM_CATALOG:

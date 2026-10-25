@@ -37,7 +37,7 @@ def auth(authorization: str | None = Header(default=None)) -> None:
 class StartBody(BaseModel):
     port: int
     node_type: str | None = None
-    catalogs: list[dict[str, str]]
+    catalogs: list[dict[str, Any]]
 
 
 def _listening(port: int) -> bool:
