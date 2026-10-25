@@ -2,7 +2,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
 
-.PHONY: help env up down ps logs check fmt test-integration spike-a spike-b spikes schema e2e
+.PHONY: help env up down ps logs check fmt test-integration spike-a spike-b spikes schema seed e2e mcp
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -47,5 +47,11 @@ schema: ## Regenerate the bundle JSON schema (needs the Databricks CLI)
 	databricks bundle schema > schemas/bundle_config_schema.json
 	databricks --version
 
-e2e: ## End-to-end test (Phase 2)
-	@echo "make e2e arrives in Phase 2 (SPEC.md section 12)"; exit 1
+seed: ## Write the demo landing data to s3://landing/shop/
+	uv run python scripts/seed_landing.py
+
+e2e: up seed ## End-to-end acceptance test (SPEC section 12): seed, deploy, run, query, destroy
+	uv run pytest -q -m e2e tests/e2e
+
+mcp: ## Run the MCP server on stdio (Claude Code starts it from .mcp.json)
+	uv run dbk-mcp

@@ -65,8 +65,9 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 testpaths = ["tests"]
 markers = [
     "integration: needs the Docker Compose stack (make up)",
+    "e2e: end-to-end acceptance test against the stack (make e2e)",
 ]
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration and not e2e'"
 
 [tool.mypy]
 python_version = "3.12"
