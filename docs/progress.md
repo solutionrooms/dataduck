@@ -34,8 +34,9 @@ and schedules compatible with bundles, dbt, and MCP-native control from Claude C
 
 **In progress**
 
-- Databricks mirror (cache a Databricks schema in a local DuckLake catalog): options discussed
-  with the owner; waiting on which access paths their workspace allows.
+- Databricks live federation and mirror: spike done against a production schema on the
+  owner's workspace (ADR 0013, proposed). Credential vending + `delta_scan` works, with deletion
+  vectors and time travel; the SQL warehouse path is kept for views. Build not started.
 
 **Next**
 
