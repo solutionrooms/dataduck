@@ -20,6 +20,10 @@ x-dbk-env: &dbk-env
   DBK_WAREHOUSE_TOKEN: ${DBK_WAREHOUSE_TOKEN:?set in .env}
   DBK_NOTEBOOKS_URL: http://127.0.0.1:${DBK_NOTEBOOKS_PORT:-2718}
   DBK_NOTEBOOKS_TOKEN: ${DBK_NOTEBOOKS_TOKEN:?set in .env}
+  # Optional Databricks workspace for live foreign catalogs and the mirror (ADR 0013).
+  DATABRICKS_HOST: ${DATABRICKS_HOST:-}
+  DATABRICKS_TOKEN: ${DATABRICKS_TOKEN:-}
+  DATABRICKS_WAREHOUSE_ID: ${DATABRICKS_WAREHOUSE_ID:-}
 
 services:
   postgres:

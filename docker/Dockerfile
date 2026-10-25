@@ -16,7 +16,7 @@ COPY migrations ./migrations
 COPY config ./config
 RUN uv sync --frozen --no-dev --extra notebooks
 # Bake DuckDB extensions into the image so sessions start offline.
-RUN python -c "import duckdb; c = duckdb.connect(); [c.install_extension(e) for e in ('ducklake', 'httpfs', 'postgres', 'quack')]"
+RUN python -c "import duckdb; c = duckdb.connect(); [c.install_extension(e) for e in ('ducklake', 'httpfs', 'postgres', 'quack', 'delta', 'azure', 'unity_catalog')]"
 
 # --- web UI -----------------------------------------------------------------------------
 FROM node:22-alpine AS ui

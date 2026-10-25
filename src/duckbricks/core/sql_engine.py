@@ -51,7 +51,12 @@ class SqlEngine:
             return con
 
     def _sync(self, con: duckdb.DuckDBPyConnection, read_only: bool) -> None:
-        for attachment in registered_attachments(self.settings):
+        current = registered_attachments(self.settings)
+        for name in self._attached[read_only] - {a.name for a in current}:
+            # No longer a DuckLake to attach: a foreign catalog switched to live mode.
+            con.execute(f"DETACH DATABASE IF EXISTS {sql_identifier(name)}")
+            self._attached[read_only].discard(name)
+        for attachment in current:
             if attachment.name not in self._attached[read_only]:
                 con.execute(attach_statement(attachment, self.settings, read_only))
                 self._attached[read_only].add(attachment.name)

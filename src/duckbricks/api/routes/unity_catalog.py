@@ -17,6 +17,16 @@ class CreateCatalog(BaseModel):
     model_config = ConfigDict(extra="allow")
     name: str
     comment: str | None = None
+    # Foreign catalogs (ADR 0013): a connection plus options.catalog (the remote name) and
+    # options.duckbricks_mode (live or mirror).
+    connection_name: str | None = None
+    options: dict[str, Any] | None = None
+
+
+class UpdateCatalog(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    comment: str | None = None
+    options: dict[str, Any] | None = None
 
 
 class CreateSchema(BaseModel):
@@ -33,12 +43,19 @@ def list_catalogs() -> dict[str, Any]:
 
 @router.post("/catalogs")
 def create_catalog(body: CreateCatalog) -> dict[str, Any]:
-    return unity_catalog().create_catalog(body.name, body.comment)
+    return unity_catalog().create_catalog(
+        body.name, body.comment, body.connection_name, body.options
+    )
 
 
 @router.get("/catalogs/{name}")
 def get_catalog(name: str) -> dict[str, Any]:
     return unity_catalog().get_catalog(name)
+
+
+@router.patch("/catalogs/{name}")
+def update_catalog(name: str, body: UpdateCatalog) -> dict[str, Any]:
+    return unity_catalog().update_catalog(name, body.comment, body.options)
 
 
 @router.get("/schemas")

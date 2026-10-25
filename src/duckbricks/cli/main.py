@@ -766,17 +766,10 @@ def ui(
         console.print(f"Opening {url}")
         webbrowser.open(url)
         return
-    from duckbricks.core.session import CatalogAttachment, open_session
+    from duckbricks.core.session import attachment_from_catalog_json, open_session
 
-    catalogs = [
-        CatalogAttachment(
-            name=item["name"],
-            metadata_schema=item["properties"]["duckbricks.metadata_schema"],
-            data_path=item["storage_root"],
-        )
-        for item in c.get("/api/2.1/unity-catalog/catalogs")["catalogs"]
-        if item.get("properties", {}).get("duckbricks.metadata_schema")
-    ]
+    items = c.get("/api/2.1/unity-catalog/catalogs")["catalogs"]
+    catalogs = [a for a in map(attachment_from_catalog_json, items) if a is not None]
     con = open_session(catalogs=catalogs)
     con.execute("CALL start_ui()")
     console.print("DuckDB UI running at http://localhost:4213 (Ctrl-C to stop)")

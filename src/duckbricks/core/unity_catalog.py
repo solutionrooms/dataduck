@@ -5,7 +5,15 @@ from __future__ import annotations
 import contextlib
 from typing import Any
 
-from duckbricks.core.catalogs import CatalogInfo, create_catalog, list_catalogs
+from duckbricks.core.catalogs import (
+    MODE_OPTION,
+    MODES,
+    CatalogError,
+    CatalogInfo,
+    create_catalog,
+    list_catalogs,
+    update_catalog,
+)
 from duckbricks.core.config import Settings, get_settings
 from duckbricks.core.errors import AlreadyExists, InvalidParameter, NotFound
 from duckbricks.core.session import sql_identifier, sql_literal
@@ -38,12 +46,12 @@ class UnityCatalog:
     # --- catalogs ----------------------------------------------------------------------
 
     def _catalog_json(self, info: CatalogInfo) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "name": info.name,
             "full_name": info.name,
             "comment": info.comment,
             "owner": self.settings.user_name,
-            "catalog_type": "MANAGED_CATALOG",
+            "catalog_type": info.catalog_type,
             "storage_root": info.data_path,
             "storage_location": info.data_path,
             "created_at": _ms(info.created_at),
@@ -51,6 +59,17 @@ class UnityCatalog:
             "isolation_mode": "OPEN",
             "properties": {"duckbricks.metadata_schema": info.metadata_schema},
         }
+        if info.is_foreign:
+            out["connection_name"] = info.connection_name
+            out["options"] = info.options
+            if info.mode == "live":
+                # Nothing local to attach: the name belongs to the remote catalog.
+                out["properties"] = {"duckbricks.mode": "live"}
+            else:
+                out["properties"].update(
+                    {"duckbricks.mode": "mirror", "duckbricks.read_only": "true"}
+                )
+        return out
 
     def _system_json(self) -> dict[str, Any]:
         return {
@@ -74,17 +93,74 @@ class UnityCatalog:
                 return self._catalog_json(info)
         raise NotFound(f"Catalog '{name}' does not exist.", error_code="CATALOG_DOES_NOT_EXIST")
 
-    def create_catalog(self, name: str, comment: str | None) -> dict[str, Any]:
+    def create_catalog(
+        self,
+        name: str,
+        comment: str | None,
+        connection_name: str | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         if name == SYSTEM_CATALOG:
             raise InvalidParameter(f"Catalog name '{name}' is reserved")
         if any(i.name == name for i in list_catalogs(self.settings)):
             raise AlreadyExists(f"Catalog '{name}' already exists.")
+        if connection_name:
+            from duckbricks.federation.connections import get_connection
+
+            get_connection(connection_name, self.settings)
+            options = {str(k): str(v) for k, v in (options or {}).items()}
+            options.setdefault("catalog", name)
+            options.setdefault(MODE_OPTION, "live")
+            self._check_mode(options)
+        elif options:
+            raise InvalidParameter("options apply to foreign catalogs (with connection_name) only")
         try:
-            info = create_catalog(name, comment, self.settings)
+            info = create_catalog(
+                name, comment, self.settings, connection_name=connection_name, options=options
+            )
         except ValueError as exc:
             raise InvalidParameter(str(exc)) from exc
         self.engine.refresh()
         return self._catalog_json(info)
+
+    @staticmethod
+    def _check_mode(options: dict[str, Any]) -> None:
+        if options.get(MODE_OPTION) not in MODES:
+            raise InvalidParameter(f"options.{MODE_OPTION} must be one of {', '.join(MODES)}")
+
+    def update_catalog(
+        self, name: str, comment: str | None, options: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        """PATCH a catalog. Foreign catalog options are merged (Databricks replaces them)."""
+        if name == SYSTEM_CATALOG:
+            raise InvalidParameter("The system catalog cannot be changed")
+        info = next((i for i in list_catalogs(self.settings) if i.name == name), None)
+        if info is None:
+            raise NotFound(f"Catalog '{name}' does not exist.", error_code="CATALOG_DOES_NOT_EXIST")
+        merged = None
+        if options is not None:
+            if not info.is_foreign:
+                raise InvalidParameter("options apply to foreign catalogs only")
+            merged = {**info.options, **{str(k): str(v) for k, v in options.items()}}
+            self._check_mode(merged)
+        try:
+            updated = update_catalog(name, comment, merged, self.settings)
+        except CatalogError as exc:
+            raise InvalidParameter(str(exc)) from exc
+        if updated.mode != info.mode:
+            self._mode_changed(name)
+        return self._catalog_json(updated)
+
+    def _mode_changed(self, name: str) -> None:
+        """Re-attach the name everywhere: the API engine now, warehouses by restarting them."""
+        from duckbricks.core import db
+        from duckbricks.warehouses import lifecycle
+
+        self.engine.refresh()
+        with db.get_engine(self.settings.control_url).begin() as conn:
+            for row in lifecycle.list_rows(conn):
+                if row["state"] in ("RUNNING", "STARTING"):
+                    lifecycle.stop(conn, row["id"], self.settings)
 
     # --- schemas -----------------------------------------------------------------------
 

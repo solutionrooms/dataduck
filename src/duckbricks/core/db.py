@@ -34,6 +34,18 @@ def _created_at() -> Column[Any]:
     return Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+# Connections to external systems (Unity Catalog connections API; ADR 0013). Options never
+# hold secrets: tokens come from the environment variable the options name.
+connections = Table(
+    "connections",
+    metadata,
+    Column("name", Text, primary_key=True),
+    Column("connection_type", Text, nullable=False),
+    Column("options", JSONB, nullable=False, server_default="{}"),
+    Column("comment", Text),
+    _created_at(),
+)
+
 catalogs = Table(
     "catalogs",
     metadata,
@@ -42,6 +54,11 @@ catalogs = Table(
     Column("metadata_schema", Text, nullable=False, unique=True),
     Column("data_path", Text, nullable=False),
     _created_at(),
+    # MANAGED_CATALOG, or FOREIGN_CATALOG over a connection. A foreign catalog's own DuckLake
+    # (metadata_schema, data_path) holds its mirror.
+    Column("catalog_type", Text, nullable=False, server_default="MANAGED_CATALOG"),
+    Column("connection_name", Text, ForeignKey("connections.name")),
+    Column("options", JSONB, nullable=False, server_default="{}"),
 )
 
 # Job runs and task runs share one id space, as in Databricks.
@@ -297,6 +314,52 @@ workers = Table(
     Column("duckdb_version", Text, nullable=False),
     Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("heartbeat_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+mirrors = Table(
+    "mirrors",
+    metadata,
+    Column("catalog", Text, ForeignKey("catalogs.name", ondelete="CASCADE"), primary_key=True),
+    Column("config", JSONB, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+mirror_tables = Table(
+    "mirror_tables",
+    metadata,
+    Column("catalog", Text, ForeignKey("catalogs.name", ondelete="CASCADE"), primary_key=True),
+    Column("schema_name", Text, primary_key=True),
+    Column("table_name", Text, primary_key=True),
+    Column("table_type", Text, nullable=False),  # TABLE or VIEW (remote)
+    Column("status", Text, nullable=False),  # SYNCED, FAILED, EXCLUDED, DROPPED
+    Column("remote_version", BigInteger),  # Delta version copied; NULL for views
+    Column("filter", Text),  # the row filter the copy used
+    Column("rows", BigInteger),
+    Column("duration_ms", BigInteger),
+    Column("error", Text),
+    Column("synced_at", DateTime(timezone=True)),
+    Column("checked_at", DateTime(timezone=True)),
+)
+
+mirror_syncs = Table(
+    "mirror_syncs",
+    metadata,
+    Column("sync_id", BigInteger, Identity(start=1), primary_key=True),
+    Column("catalog", Text, ForeignKey("catalogs.name", ondelete="CASCADE"), nullable=False),
+    Column("trigger", Text, nullable=False),  # SCHEDULE, POLL, MANUAL
+    Column("state", Text, nullable=False),  # QUEUED, RUNNING, SUCCESS, PARTIAL, FAILED
+    Column("request", JSONB, nullable=False, server_default="{}"),  # tables, full_refresh
+    Column("worker_id", Text),
+    Column("queued_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("started_at", DateTime(timezone=True)),
+    Column("ended_at", DateTime(timezone=True)),
+    Column("heartbeat_at", DateTime(timezone=True)),
+    Column("copied", Integer, nullable=False, server_default="0"),
+    Column("skipped", Integer, nullable=False, server_default="0"),
+    Column("failed", Integer, nullable=False, server_default="0"),
+    Column("rows", BigInteger, nullable=False, server_default="0"),
+    Column("message", Text),
+    Index("ix_mirror_syncs_state", "state", "queued_at"),
 )
 
 

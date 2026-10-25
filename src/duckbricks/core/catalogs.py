@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 
 from duckbricks.core import db
 from duckbricks.core.config import Settings, get_settings
@@ -32,6 +33,12 @@ class CatalogError(ValueError):
     pass
 
 
+MANAGED = "MANAGED_CATALOG"
+FOREIGN = "FOREIGN_CATALOG"
+MODE_OPTION = "duckbricks_mode"  # foreign catalogs: live (query Databricks) or mirror (local copy)
+MODES = ("live", "mirror")
+
+
 @dataclass(frozen=True)
 class CatalogInfo:
     name: str
@@ -39,9 +46,27 @@ class CatalogInfo:
     metadata_schema: str
     data_path: str
     created_at: datetime
+    catalog_type: str = MANAGED
+    connection_name: str | None = None
+    options: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def is_foreign(self) -> bool:
+        return self.catalog_type == FOREIGN
+
+    @property
+    def mode(self) -> str | None:
+        """`live` or `mirror` for a foreign catalog; None for a managed one."""
+        return str(self.options.get(MODE_OPTION) or "live") if self.is_foreign else None
+
+    @property
+    def remote_catalog(self) -> str | None:
+        return str(self.options.get("catalog") or self.name) if self.is_foreign else None
 
     def attachment(self) -> CatalogAttachment:
-        return CatalogAttachment(self.name, self.metadata_schema, self.data_path)
+        return CatalogAttachment(
+            self.name, self.metadata_schema, self.data_path, read_only=self.is_foreign
+        )
 
 
 def validate_catalog_name(name: str) -> None:
@@ -63,16 +88,49 @@ def list_catalogs(settings: Settings | None = None) -> list[CatalogInfo]:
 
 
 def registered_attachments(settings: Settings | None = None) -> list[CatalogAttachment]:
-    return [info.attachment() for info in list_catalogs(settings)]
+    """DuckLake catalogs every session attaches. A foreign catalog's mirror is attached
+    read-only in mirror mode; in live mode the name belongs to the remote catalog (ADR 0013)."""
+    return [info.attachment() for info in list_catalogs(settings) if info.mode != "live"]
+
+
+def get_catalog_info(name: str, settings: Settings | None = None) -> CatalogInfo | None:
+    return next((i for i in list_catalogs(settings) if i.name == name), None)
+
+
+def update_catalog(
+    name: str,
+    comment: str | None = None,
+    options: dict[str, Any] | None = None,
+    settings: Settings | None = None,
+) -> CatalogInfo:
+    settings = settings or get_settings()
+    values: dict[str, Any] = {}
+    if comment is not None:
+        values["comment"] = comment
+    if options is not None:
+        values["options"] = options
+    if values:
+        with db.get_engine(settings.control_url).begin() as conn:
+            conn.execute(update(db.catalogs).where(db.catalogs.c.name == name).values(**values))
+    info = get_catalog_info(name, settings)
+    if info is None:
+        raise CatalogError(f"Catalog '{name}' does not exist")
+    return info
 
 
 def create_catalog(
-    name: str, comment: str | None = None, settings: Settings | None = None
+    name: str,
+    comment: str | None = None,
+    settings: Settings | None = None,
+    *,
+    connection_name: str | None = None,
+    options: dict[str, Any] | None = None,
 ) -> CatalogInfo:
     """Register a catalog and initialise its DuckLake (metadata schema + `default` schema).
 
     The registry row and the DuckLake initialisation succeed or fail together: the row is
-    written in a transaction that commits only after the DuckLake attach works.
+    written in a transaction that commits only after the DuckLake attach works. A catalog with
+    a `connection_name` is a foreign catalog; its DuckLake holds the mirror.
     """
     settings = settings or get_settings()
     validate_catalog_name(name)
@@ -88,6 +146,9 @@ def create_catalog(
                 comment=comment,
                 metadata_schema=attachment.metadata_schema,
                 data_path=attachment.data_path,
+                catalog_type=FOREIGN if connection_name else MANAGED,
+                connection_name=connection_name,
+                options=options or {},
             )
         )
         initialise_ducklake(attachment, settings)

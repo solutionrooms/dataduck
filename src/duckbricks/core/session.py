@@ -6,8 +6,9 @@ Every DuckDB process (API, worker tasks, warehouses, spikes) gets its connection
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import duckdb
 
@@ -27,6 +28,22 @@ class CatalogAttachment:
     name: str
     metadata_schema: str
     data_path: str
+    # Always attached READ_ONLY (a foreign catalog's mirror: only the mirror sync writes it).
+    read_only: bool = False
+
+
+def attachment_from_catalog_json(item: Mapping[str, Any]) -> CatalogAttachment | None:
+    """The attachment for a catalog as the Unity Catalog API returns it, or None when the
+    catalog has no DuckLake to attach (`sys`, or a foreign catalog in live mode)."""
+    props = item.get("properties") or {}
+    if not props.get("duckbricks.metadata_schema"):
+        return None
+    return CatalogAttachment(
+        name=item["name"],
+        metadata_schema=props["duckbricks.metadata_schema"],
+        data_path=item["storage_root"],
+        read_only=props.get("duckbricks.read_only") == "true",
+    )
 
 
 def sql_literal(value: str) -> str:
@@ -63,7 +80,7 @@ def attach_statement(catalog: CatalogAttachment, settings: Settings, read_only: 
         f"METADATA_SCHEMA {sql_literal(catalog.metadata_schema)}",
         f"METADATA_PARAMETERS MAP {{'SECRET': {sql_literal(PG_SECRET)}}}",
     ]
-    if read_only:
+    if read_only or catalog.read_only:
         options.append("READ_ONLY")
     target = sql_literal(f"ducklake:postgres:dbname={settings.lake_db}")
     return f"ATTACH IF NOT EXISTS {target} AS {sql_identifier(catalog.name)} ({', '.join(options)})"
