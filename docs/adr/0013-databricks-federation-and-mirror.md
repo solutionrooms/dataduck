@@ -1,6 +1,6 @@
 # 0013. Databricks federation and mirror: vended credentials, DuckDB reads, DuckLake copies
 
-- Status: proposed (spike done)
+- Status: accepted (built 2026-10-25)
 - Date: 2026-10-25
 
 ## Context
@@ -54,11 +54,10 @@ Option 1 for tables. Option 3 only for views and for tables the grant does not c
   `options.duckbricks_mode` (`live` or `mirror`) and `options.duckbricks_mirror` (schemas and
   tables to include or exclude). Both are extension fields, recorded in compat.md.
 - **Live mode.** The catalog is attached with the `unity_catalog` extension, `READ_ONLY`. Before
-  a statement, the attaching process asks the API for credentials for the tables it references
-  (`POST /api/duckbricks/connections/{name}/credentials`). The API vends them, caches each one
-  until five minutes before it expires, and returns it. The process then creates a scoped
-  `azure` secret per table location. SAS tokens live in memory only and are never written to
-  the control database or logs. Views run on the SQL warehouse.
+  a statement, the tables it names in live catalogs are found with sqlglot; the process that
+  prepares the statement vends credentials for them, caches each until five minutes before it
+  expires, and creates a scoped `azure` secret per table location. SAS tokens live in memory
+  only and are never written to the control database or logs. Views are rejected (see below).
 - **Mirror mode.** The catalog is a DuckLake catalog in the existing metadata database and
   object store. Users and warehouses attach it `READ_ONLY`; only the sync, which runs in the
   worker, writes. For each table, a sync compares the remote Delta version with the last synced
@@ -92,3 +91,23 @@ Option 1 for tables. Option 3 only for views and for tables the grant does not c
   An extension upgrade that handles Azure vending itself would remove that code.
 - Tables with row filters or column masks cannot be vended. They would go through the SQL
   warehouse, which applies the masks for the token's identity.
+
+## Implementation notes (2026-10-25)
+
+- **Where live statements are prepared.** The API engine and SQL tasks run the prelude in their
+  own session. For warehouses the API sends it as a separate Quack call before the statement:
+  `quack_query` returns the first result set, and `CREATE SECRET` has one. Secrets, attachments
+  and `SET GLOBAL` settings persist in the warehouse process. The token reaches warehouses inside
+  that call; all containers get `DATABRICKS_*` from `.env`, like the S3 keys.
+- **Views in live mode are rejected**, not routed to the SQL warehouse: one statement cannot mix
+  local and remote execution without rewriting it. Mirror views, or query their base tables.
+- **Not wired yet:** live catalogs in notebooks (`spark`, `mo.sql`) and in dbt. Mirror catalogs
+  are ordinary read-only DuckLake catalogs and work everywhere.
+- **Azure transport.** The `azure` extension's default transport cannot find Debian's CA bundle;
+  sessions that read Databricks storage set `azure_transport_option_type = 'curl'`.
+- **The first mirror.** The owner mirrors one production schema: 124 of its 130 tables in full,
+  the largest one filtered to its latest 12 fiscal periods, and its three views left out (each
+  reads another schema, so it could only be copied through the warehouse). About 24 GB locally.
+- **Long copies.** A table copy can outlast the 60-minute SAS for very large tables at the
+  measured rate (about 16 MB/s); the largest copy here takes minutes. Splitting long copies by
+  file is future work.

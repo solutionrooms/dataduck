@@ -103,6 +103,25 @@ entries at the top of each table. "Lenient" means accepted with a warning and no
 | Notebooks | marimo; Databricks `.py` source runs as Python, `# MAGIC` cells skipped | Different | ADR 0011 |
 | `dbutils` | `widgets`, `jobs.taskValues`, `notebook.exit` only | Subset | |
 
+## Connections and foreign catalogs (ADR 0013)
+
+| Databricks | Duckbricks | Kind | Why |
+|---|---|---|---|
+| `connection_type` | `DATABRICKS` only; others rejected | Subset | Federation targets a Databricks workspace |
+| Connection secrets (`personalAccessToken`, `client_secret`, ...) | Ignored with a warning; the token comes from the env var in `options.duckbricks_token_env` (default `DATABRICKS_TOKEN`) | Different | No secrets in the control database |
+| `options.httpPath` | Gives the SQL warehouse id (also `options.duckbricks_warehouse_id`) | Same + extra | |
+| Foreign catalog `options.catalog` | The remote catalog (defaults to the local name) | Same | |
+| `options.duckbricks_mode` | `live` (default) or `mirror` | Extension | ADR 0013 |
+| `PATCH /catalogs/{name}` `options` | Merged into the existing options | Different | Databricks replaces the map |
+| Live mode: tables | Read from storage with vended credentials; needs `EXTERNAL USE SCHEMA` | Same idea | No Databricks compute |
+| Live mode: views, materialized views, streaming tables | Rejected with a message | Rejected | No files to read; mirror them instead |
+| Live mode in notebooks (`spark`, `mo.sql`) and dbt | Not available; mirror mode works everywhere | Subset | Live tables are prepared per statement by the API, warehouses and SQL tasks |
+| Writes to a foreign catalog | Rejected (`READ_ONLY` attachment) | Same | |
+| Mirror config, status, syncs | `/api/duckbricks/mirrors/...` | Extension | |
+| Mirrored views | Copied through the SQL warehouse (Arrow) | Extension | About 8.5x the Parquet size on the wire |
+| Storage clouds | Azure (ADLS) only | Subset | Only Azure has been tested |
+| Table history of a live table | Empty | Different | Snapshots are DuckLake's |
+
 ## Engine notes
 
 | Topic | Note |
@@ -110,3 +129,4 @@ entries at the top of each table. "Lenient" means accepted with a warning and no
 | DuckDB 2.0 Python API | `DuckDBPyRelation.fetchone()` is gone; use `con.execute(sql).fetchone()` or `rel.fetchall()` |
 | DuckLake data inlining | Inserts under 10 rows are inlined into the Postgres metadata until flushed (`ducklake_default_data_inlining_row_limit`) |
 | Reserved words | DuckDB 2.0 reserves `days` (and other interval units) as column aliases; quote them |
+| Azure in containers | The `azure` extension needs `azure_transport_option_type = 'curl'` on Debian images (CA bundle path) |
