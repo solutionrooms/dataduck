@@ -37,7 +37,30 @@ def _con() -> duckdb.DuckDBPyConnection:
         ctx.get("node_type"),
         default_catalog=ctx.get("catalog") or "workspace",
         default_schema=ctx.get("schema"),
+        catalogs=_catalogs(),
     )
+
+
+def _catalogs() -> list[Any] | None:
+    """The catalogs to attach, from the API: notebooks never read the control database.
+
+    None (use the registry) when the API is unreachable, e.g. in local development.
+    """
+    from duckbricks.core.session import CatalogAttachment
+
+    try:
+        items = _Api().call("GET", "/api/2.1/unity-catalog/catalogs")["catalogs"]
+    except Exception:
+        return None
+    return [
+        CatalogAttachment(
+            name=item["name"],
+            metadata_schema=item["properties"]["duckbricks.metadata_schema"],
+            data_path=item["storage_root"],
+        )
+        for item in items
+        if (item.get("properties") or {}).get("duckbricks.metadata_schema")
+    ]
 
 
 @lru_cache

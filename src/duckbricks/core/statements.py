@@ -128,6 +128,20 @@ def replace_markers(sql: str, names: set[str] | None = None) -> str:
     return "".join(out)
 
 
+SYSTEM_REF = re.compile(r'(?<![\w."])"?sys"?\s*\.', re.IGNORECASE)
+
+
+def references_system_catalog(sql: str) -> bool:
+    """Whether a statement names the `sys` catalog (outside strings and comments).
+
+    Warehouses do not attach `sys` (it is a view over the control database); such
+    statements run on the API's read-only engine instead.
+    """
+    text = re.sub(r"'(?:[^']|'')*'", "''", sql)
+    text = re.sub(r"--[^\n]*|/\*.*?\*/", " ", text, flags=re.DOTALL)
+    return bool(SYSTEM_REF.search(text))
+
+
 def convert_parameters(
     statement: str, parameters: list[dict[str, Any]] | None
 ) -> tuple[str, dict[str, Any]]:
@@ -313,7 +327,12 @@ class StatementService:
         read_only = bool(request.get("read_only"))
         try:
             runner = None
-            if request.get("warehouse_id") and not read_only and self.router is not None:
+            if (
+                request.get("warehouse_id")
+                and not read_only
+                and self.router is not None
+                and not references_system_catalog(sql)
+            ):
                 runner = self.router(str(request["warehouse_id"]))
             if runner is not None:
                 run.result = runner(

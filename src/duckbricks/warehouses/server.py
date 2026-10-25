@@ -1,17 +1,20 @@
 """One SQL warehouse: a long-running DuckDB session serving Quack.
 
-`python -m duckbricks.warehouses.server --id <id> --port <port> --node-type <type>`. The session
-comes from the platform's session factory, so every catalog (and `sys`) is attached.
+`python -m duckbricks.warehouses.server --id <id> --port <port> --node-type <type>`. The API
+passes the catalogs to attach in `DBK_WAREHOUSE_CATALOGS` (JSON), so the warehouse never
+reads the control database; catalogs created later are attached by the API's client.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import signal
 import threading
 
 from duckbricks.core.config import get_settings
-from duckbricks.core.session import open_session, sql_literal
+from duckbricks.core.session import CatalogAttachment, open_session, sql_literal
 
 
 def main() -> None:
@@ -22,7 +25,10 @@ def main() -> None:
     args = parser.parse_args()
     settings = get_settings()
     token = settings.warehouse_token.get_secret_value()
-    con = open_session(args.node_type, default_catalog="workspace", system_catalog=True)
+    catalogs = [
+        CatalogAttachment(**item) for item in json.loads(os.environ["DBK_WAREHOUSE_CATALOGS"])
+    ]
+    con = open_session(args.node_type, catalogs=catalogs, default_catalog="workspace")
     con.install_extension("quack")
     con.load_extension("quack")
     uri = f"quack:0.0.0.0:{args.port}"

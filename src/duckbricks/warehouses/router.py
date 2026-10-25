@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from duckbricks.core import db
+from duckbricks.core.catalogs import registered_attachments
 from duckbricks.core.config import get_settings
 from duckbricks.core.statements import QueryResult, WarehouseRunner
 from duckbricks.warehouses import lifecycle
@@ -25,10 +26,11 @@ def warehouse_router(warehouse_id: str) -> WarehouseRunner | None:
         else:
             lifecycle.touch(conn, warehouse_id)
         port = int(row["port"])
+    catalogs = registered_attachments(settings)
 
     def run(
         sql: str, params: dict[str, Any], row_limit: int, catalog: str | None, schema: str | None
     ) -> QueryResult:
-        return run_on_warehouse(port, sql, params, row_limit, catalog, schema, settings)
+        return run_on_warehouse(port, sql, params, row_limit, catalog, schema, settings, catalogs)
 
     return run

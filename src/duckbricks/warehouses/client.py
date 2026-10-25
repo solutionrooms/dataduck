@@ -11,7 +11,13 @@ from typing import Any
 import duckdb
 
 from duckbricks.core.config import Settings, get_settings
-from duckbricks.core.session import open_session, sql_identifier, sql_literal
+from duckbricks.core.session import (
+    CatalogAttachment,
+    attach_statement,
+    open_session,
+    sql_identifier,
+    sql_literal,
+)
 from duckbricks.core.statements import QueryResult, to_json_value
 
 _local = threading.local()
@@ -85,7 +91,10 @@ def run_on_warehouse(
     catalog: str | None,
     schema: str | None,
     settings: Settings | None = None,
+    catalogs: list[CatalogAttachment] | None = None,
 ) -> QueryResult:
+    """Run on the warehouse at `port`. `catalogs` are attached first if missing (idempotent),
+    so catalogs created after the warehouse started are visible."""
     settings = settings or get_settings()
     text = inline_parameters(sql, params)
     if catalog:
@@ -93,6 +102,8 @@ def run_on_warehouse(
         text = f"USE {target}; {text}"
     elif schema:
         text = f"USE {sql_identifier(schema)}; {text}"
+    attach = "".join(f"{attach_statement(c, settings, False)}; " for c in catalogs or [])
+    text = attach + text
     uri = f"quack:{settings.warehouse_host}:{port}"
     con = _client(settings)
     relation = con.execute(

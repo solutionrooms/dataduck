@@ -6,6 +6,8 @@ A small HTTP service on port 9400, called only by the API. Each running warehous
 
 from __future__ import annotations
 
+import json
+import os
 import secrets
 import socket
 import subprocess
@@ -35,6 +37,7 @@ def auth(authorization: str | None = Header(default=None)) -> None:
 class StartBody(BaseModel):
     port: int
     node_type: str | None = None
+    catalogs: list[dict[str, str]]
 
 
 def _listening(port: int) -> bool:
@@ -76,7 +79,8 @@ def start(warehouse_id: str, body: StartBody) -> dict[str, Any]:
         ]
         if body.node_type:
             argv += ["--node-type", body.node_type]
-        proc = subprocess.Popen(argv)
+        env = {**os.environ, "DBK_WAREHOUSE_CATALOGS": json.dumps(body.catalogs)}
+        proc = subprocess.Popen(argv, env=env)
         _processes[warehouse_id] = (body.port, proc)
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:

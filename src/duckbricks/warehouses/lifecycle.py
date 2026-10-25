@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import uuid
+from dataclasses import asdict
 from typing import Any
 
 import httpx
@@ -16,6 +17,7 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Connection
 
 from duckbricks.core import db
+from duckbricks.core.catalogs import registered_attachments
 from duckbricks.core.config import Settings, get_settings
 from duckbricks.core.errors import AlreadyExists, InvalidParameter, InvalidState, NotFound
 
@@ -224,7 +226,11 @@ def start(conn: Connection, warehouse_id: str, settings: Settings | None = None)
         settings,
         "POST",
         f"/warehouses/{warehouse_id}/start",
-        json={"port": port, "node_type": CLUSTER_SIZES.get(row["cluster_size"])},
+        json={
+            "port": port,
+            "node_type": CLUSTER_SIZES.get(row["cluster_size"]),
+            "catalogs": [asdict(c) for c in registered_attachments(settings)],
+        },
     )
     conn.execute(
         update(db.warehouses)
