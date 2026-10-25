@@ -35,17 +35,22 @@ def library_files(ws: Workspace, spec: dict[str, Any]) -> list[dict[str, str]]:
                 files.append({"path": item["path"], "local": str(local)})
         pattern = (library.get("glob") or {}).get("include")
         if pattern:
-            local_pattern = str(ws.local(pattern.split("*", 1)[0] or "/")) + (
-                pattern[len(pattern.split("*", 1)[0]) :] if "*" in pattern else ""
-            )
-            if not any(c in pattern for c in "*?["):
-                local_pattern = local_pattern.rstrip("/") + "/**"
+            local_pattern = glob_to_local(ws, pattern)
             for match in sorted(glob.glob(local_pattern, recursive=True)):
                 if match.endswith((".sql", ".py")) and Path(match).is_file():
                     files.append({"path": ws.workspace_path(Path(match)), "local": match})
     if not files:
         raise TaskFailed("The pipeline's libraries matched no files")
     return files
+
+
+def glob_to_local(ws: Workspace, pattern: str) -> str:
+    """A workspace glob (`/Users/me/x/**`, `/Users/me/x/*.sql`, `/Users/me/x`) as a local glob."""
+    wild = min((pattern.find(c) for c in "*?[" if c in pattern), default=-1)
+    if wild < 0:
+        return str(ws.local(pattern)).rstrip("/") + "/**"
+    base, _, _ = pattern[:wild].rpartition("/")
+    return str(ws.local(base or "/")).rstrip("/") + "/" + pattern[len(base) + 1 :]
 
 
 def run_update_for_task(ex: Execution, task_spec: dict[str, Any]) -> Outcome:

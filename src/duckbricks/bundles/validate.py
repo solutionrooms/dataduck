@@ -83,7 +83,7 @@ def _check_jobs(bundle: ResolvedBundle, result: ValidationResult) -> None:
 def _placeholder_refs(value: Any) -> Any:
     """`${resources.jobs.x.id}` resolves at deploy; validate with a stand-in id."""
     if isinstance(value, str) and value.startswith("${resources."):
-        return 0
+        return 0 if value.startswith("${resources.jobs.") else "placeholder"
     if isinstance(value, list):
         return [_placeholder_refs(v) for v in value]
     if isinstance(value, dict):
