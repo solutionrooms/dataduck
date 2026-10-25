@@ -93,16 +93,16 @@ class DuckbricksClient:
         result: dict[str, Any] = response.json()
         return result
 
-    def get(self, path: str, **params: Any) -> dict[str, Any]:
+    def get(self, url: str, /, **params: Any) -> dict[str, Any]:
         clean = {k: v for k, v in params.items() if v is not None}
-        return self.request("GET", path, params=clean)
+        return self.request("GET", url, params=clean)
 
     def post(self, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         return self.request("POST", path, json=body or {})
 
-    def delete(self, path: str, **params: Any) -> dict[str, Any]:
+    def delete(self, url: str, /, **params: Any) -> dict[str, Any]:
         return self.request(
-            "DELETE", path, params={k: v for k, v in params.items() if v is not None}
+            "DELETE", url, params={k: v for k, v in params.items() if v is not None}
         )
 
     # --- conveniences ----------------------------------------------------------------------

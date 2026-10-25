@@ -38,7 +38,9 @@ schemas_app = typer.Typer(no_args_is_help=True, help="Schemas.")
 tables_app = typer.Typer(no_args_is_help=True, help="Tables.")
 warehouses_app = typer.Typer(no_args_is_help=True, help="SQL warehouses.")
 pipelines_app = typer.Typer(no_args_is_help=True, help="Pipelines.")
+workspace_app = typer.Typer(no_args_is_help=True, help="Workspace files and notebooks.")
 for sub, name in (
+    (workspace_app, "workspace"),
     (bundle_app, "bundle"),
     (jobs_app, "jobs"),
     (runs_app, "runs"),
@@ -692,6 +694,60 @@ def pipelines_events(pipeline_id: str, limit: int = 50, output: OutputOpt = Outp
         output,
         ["timestamp", "level", "event_type", "message"],
     )
+
+
+# --- workspace ---------------------------------------------------------------------------------
+
+
+@workspace_app.command("list")
+def workspace_list(
+    path: Annotated[str, typer.Argument(help="Workspace directory")] = "/",
+    output: OutputOpt = Output.text,
+) -> None:
+    data = client().get("/api/2.0/workspace/list", path=path)
+    emit(
+        data if output == Output.json else data.get("objects", []),
+        output,
+        ["path", "object_type", "language"],
+    )
+
+
+@workspace_app.command("import")
+def workspace_import(
+    source: Annotated[Path, typer.Argument(help="Local file")],
+    target: Annotated[str, typer.Argument(help="Workspace path")],
+    overwrite: Annotated[bool, typer.Option("--overwrite")] = False,
+) -> None:
+    import base64
+
+    content = base64.b64encode(source.read_bytes()).decode()
+    client().post(
+        "/api/2.0/workspace/import",
+        {"path": target, "content": content, "format": "AUTO", "overwrite": overwrite},
+    )
+    console.print(f"Imported {source} to {target}")
+
+
+@workspace_app.command("export")
+def workspace_export(path: str) -> None:
+    import base64
+
+    data = client().get("/api/2.0/workspace/export", path=path, format="SOURCE")
+    sys.stdout.write(base64.b64decode(data["content"]).decode())
+
+
+@workspace_app.command("mkdirs")
+def workspace_mkdirs(path: str) -> None:
+    client().post("/api/2.0/workspace/mkdirs", {"path": path})
+    console.print(f"Created {path}")
+
+
+@workspace_app.command("delete")
+def workspace_delete(
+    path: str, recursive: Annotated[bool, typer.Option("--recursive")] = False
+) -> None:
+    client().post("/api/2.0/workspace/delete", {"path": path, "recursive": recursive})
+    console.print(f"Moved {path} to trash")
 
 
 # --- UI -----------------------------------------------------------------------------------------
