@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Spike B: dbt v2 (dbt-oss) builds one model into the Postgres-backed DuckLake on SeaweedFS.
+# Spike B: dbt v2 builds one model into the Postgres-backed DuckLake on SeaweedFS.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 
@@ -14,4 +14,8 @@ dbt --version
 driver="$(dbt show --inline "select version() as v" 2>&1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 echo "dbt DuckDB driver: ${driver:-unknown}"
 dbt run
+
+# Static analysis and column lineage (full distribution only; dbt-oss warns and skips).
+dbt compile --static-analysis strict --generate-info-schema
+python "$here/check.py" lineage target/info_schema/v1
 python "$here/check.py" verify "${driver:-unknown}"

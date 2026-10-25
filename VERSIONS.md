@@ -38,9 +38,11 @@ Verified 2026-10-25 on macOS arm64 (Docker Desktop, linux/arm64 images).
 
 | Component | Version | Where it is pinned | How verified |
 |---|---|---|---|
-| dbt (open-source distribution) | dbt-oss 2.0.8 | `docker/worker.Dockerfile` (`DBT_VERSION`, sha256 per arch) | `dbt --version` |
+| dbt (default build, `DBT_DISTRIBUTION=full`) | dbt 2.0.9 | `docker/worker.Dockerfile` (`DBT_FULL_VERSION`, sha256 per arch) | `dbt --version` |
+| dbt (alternative build, `DBT_DISTRIBUTION=oss`) | dbt-oss 2.0.8 | `docker/worker.Dockerfile` (`DBT_OSS_VERSION`, sha256 per arch) | `dbt --version` |
 | dbt's DuckDB driver | DuckDB 2.0.0 (system ADBC driver in `/etc/adbc/drivers`) | `docker/worker.Dockerfile` (`DUCKDB_DRIVER_VERSION`) | `dbt show --inline "select version()"` returns `v2.0.0` |
 | dbt's bundled DuckDB driver | 1.5.4 (not used: cannot open DuckLake 1.1) | dbt source | Spike B, ADR 0005 |
+| Static analysis / column lineage | full build only | ADR 0006 | Spike B prints `dbt.column_lineage.parquet` rows |
 | dbc (driver installer) | 0.3.1 | `docker/worker.Dockerfile` (`DBC_VERSION`) | build-time only |
 
 dbt and the platform run the same DuckDB (2.0.0), so `dbk status` has no mismatch to report.

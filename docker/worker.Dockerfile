@@ -17,26 +17,40 @@ COPY config ./config
 RUN uv sync --frozen --no-dev
 RUN python -c "import duckdb; c = duckdb.connect(); [c.install_extension(e) for e in ('ducklake', 'httpfs', 'postgres')]"
 
-# dbt v2, open-source distribution: one static binary from the GitHub release, checksum-pinned.
-ARG DBT_VERSION=2.0.8
-ARG DBT_SHA256_AARCH64=08adc0abdcf8c077237ea3dfc78815a949557879144ee1def5c447bc2d2912cd
-ARG DBT_SHA256_X86_64=5ae21d84f6d3b96f1e4f3ba7e0265c78bee804f6c812c4c00494487fd402abbe
+# dbt v2: one static binary, checksum-pinned. DBT_DISTRIBUTION picks the build (ADR 0006):
+#   full: the dbt distribution (static analysis, column lineage), from dbt Labs' CDN
+#   oss:  dbt-oss, from the GitHub release
+ARG DBT_DISTRIBUTION=full
+ARG DBT_FULL_VERSION=2.0.9
+ARG DBT_FULL_SHA256_AARCH64=a1a2ad5cd08f81654ed40aab7dcd6130582a1b5e1d73fd9624a41bc3c4097ac5
+ARG DBT_FULL_SHA256_X86_64=cc57e1f6a40d9d62008d2242c03fc8fbe5cca289c957abf784f9a6267bc4b0ef
+ARG DBT_OSS_VERSION=2.0.8
+ARG DBT_OSS_SHA256_AARCH64=08adc0abdcf8c077237ea3dfc78815a949557879144ee1def5c447bc2d2912cd
+ARG DBT_OSS_SHA256_X86_64=5ae21d84f6d3b96f1e4f3ba7e0265c78bee804f6c812c4c00494487fd402abbe
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 RUN set -eux; \
     arch="$(uname -m)"; \
-    case "$arch" in \
-      aarch64) sha="$DBT_SHA256_AARCH64" ;; \
-      x86_64) sha="$DBT_SHA256_X86_64" ;; \
-      *) echo "unsupported architecture: $arch"; exit 1 ;; \
+    case "$DBT_DISTRIBUTION/$arch" in \
+      full/aarch64) sha="$DBT_FULL_SHA256_AARCH64" ;; \
+      full/x86_64) sha="$DBT_FULL_SHA256_X86_64" ;; \
+      oss/aarch64) sha="$DBT_OSS_SHA256_AARCH64" ;; \
+      oss/x86_64) sha="$DBT_OSS_SHA256_X86_64" ;; \
+      *) echo "unsupported DBT_DISTRIBUTION/arch: $DBT_DISTRIBUTION/$arch"; exit 1 ;; \
     esac; \
-    name="dbt-core-${DBT_VERSION}-${arch}-unknown-linux-gnu"; \
-    curl -fsSLo /tmp/dbt.tar.gz "https://github.com/dbt-labs/dbt/releases/download/v${DBT_VERSION}/${name}.tar.gz"; \
+    if [ "$DBT_DISTRIBUTION" = full ]; then \
+      url="https://public.cdn.getdbt.com/fs/cli/fs-v${DBT_FULL_VERSION}-${arch}-unknown-linux-gnu.tar.gz"; \
+    else \
+      url="https://github.com/dbt-labs/dbt/releases/download/v${DBT_OSS_VERSION}/dbt-core-${DBT_OSS_VERSION}-${arch}-unknown-linux-gnu.tar.gz"; \
+    fi; \
+    mkdir -p /tmp/dbt; \
+    curl -fsSLo /tmp/dbt.tar.gz "$url"; \
     echo "${sha}  /tmp/dbt.tar.gz" | sha256sum -c -; \
-    tar -xzf /tmp/dbt.tar.gz -C /tmp; \
-    install -Dm755 "/tmp/${name}/dbt" /usr/local/bin/dbt; \
-    rm -rf /tmp/dbt.tar.gz "/tmp/${name}"; \
+    tar -xzf /tmp/dbt.tar.gz -C /tmp/dbt; \
+    install -Dm755 "$(find /tmp/dbt -type f -name dbt | head -1)" /usr/local/bin/dbt; \
+    rm -rf /tmp/dbt.tar.gz /tmp/dbt; \
     dbt --version
+ENV DBK_DBT_DISTRIBUTION=${DBT_DISTRIBUTION}
 
 # dbt's bundled DuckDB driver (1.5.4) cannot open DuckLake 1.1 catalogs. Install the system
 # DuckDB driver at the platform's DuckDB version; dbt prefers it over the bundled one (ADR 0005).
