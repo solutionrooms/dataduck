@@ -28,6 +28,7 @@ from duckbricks.worker.executors import Execution, execute, load_run
 log = logging.getLogger("duckbricks.worker")
 HEARTBEAT_SECONDS = 10.0
 IDLE_POLL_SECONDS = 1.0
+MIRROR_POLL_SECONDS = 5.0
 
 
 def dbt_versions() -> dict[str, str | None]:
@@ -174,9 +175,27 @@ class Worker:
             with self.lock:
                 self.running.pop(run_id, None)
 
+    def mirror_loop(self) -> None:
+        """Run queued mirror syncs one at a time, beside the task slots (ADR 0013)."""
+        from duckbricks.federation import mirror
+
+        while not self.stopping.is_set():
+            try:
+                with self.engine.begin() as conn:
+                    sync_id = mirror.claim(conn, self.worker_id)
+                if sync_id is None:
+                    self.stopping.wait(MIRROR_POLL_SECONDS)
+                    continue
+                log.warning("running mirror sync %s", sync_id)
+                mirror.run_sync(sync_id, self.settings)
+            except Exception:
+                log.exception("mirror loop failed")
+                self.stopping.wait(MIRROR_POLL_SECONDS)
+
     def serve(self) -> None:
         self.register()
         threading.Thread(target=self.heartbeat_loop, daemon=True).start()
+        threading.Thread(target=self.mirror_loop, name="mirror", daemon=True).start()
         log.warning("worker %s started with %s slots", self.worker_id, self.slots)
         while not self.stopping.is_set():
             with self.lock:

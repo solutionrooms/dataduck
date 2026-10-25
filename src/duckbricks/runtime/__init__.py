@@ -46,21 +46,13 @@ def _catalogs() -> list[Any] | None:
 
     None (use the registry) when the API is unreachable, e.g. in local development.
     """
-    from duckbricks.core.session import CatalogAttachment
+    from duckbricks.core.session import attachment_from_catalog_json
 
     try:
         items = _Api().call("GET", "/api/2.1/unity-catalog/catalogs")["catalogs"]
     except Exception:
         return None
-    return [
-        CatalogAttachment(
-            name=item["name"],
-            metadata_schema=item["properties"]["duckbricks.metadata_schema"],
-            data_path=item["storage_root"],
-        )
-        for item in items
-        if (item.get("properties") or {}).get("duckbricks.metadata_schema")
-    ]
+    return [a for a in map(attachment_from_catalog_json, items) if a is not None]
 
 
 @lru_cache

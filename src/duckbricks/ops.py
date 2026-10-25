@@ -6,6 +6,7 @@ through the API, like any other client.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -124,6 +125,41 @@ def failed_task_logs(
     return out
 
 
+MIRROR_ACTIVE = ("QUEUED", "RUNNING")
+
+
+def mirror_sync(
+    client: DuckbricksClient,
+    catalog: str,
+    tables: list[str] | None = None,
+    full_refresh: bool = False,
+    wait: bool = True,
+    timeout: float = 4 * 3600,
+) -> dict[str, Any]:
+    """Queue a mirror sync; with `wait`, poll until it finishes and return its final record."""
+    body = {"tables": tables or [], "full_refresh": full_refresh}
+    queued = client.post(f"/api/duckbricks/mirrors/{catalog}/sync", body)
+    sync = client.get(f"/api/duckbricks/mirror-syncs/{queued['sync_id']}")
+    deadline = time.monotonic() + timeout
+    while wait and sync["state"] in MIRROR_ACTIVE and time.monotonic() < deadline:
+        time.sleep(5)
+        sync = client.get(f"/api/duckbricks/mirror-syncs/{queued['sync_id']}")
+    return {**sync, "warnings": queued.get("warnings", [])}
+
+
+def mirror_freshness(status: dict[str, Any]) -> dict[str, Any]:
+    """Counts and the oldest copy across a mirror's tables."""
+    tables = status.get("tables") or []
+    synced = [t for t in tables if t["status"] == "SYNCED"]
+    return {
+        "synced": len(synced),
+        "failed": sum(t["status"] == "FAILED" for t in tables),
+        "rows": sum(t.get("rows") or 0 for t in synced),
+        "oldest_copy": min((t["synced_at"] for t in synced if t.get("synced_at")), default=None),
+        "newest_copy": max((t["synced_at"] for t in synced if t.get("synced_at")), default=None),
+    }
+
+
 __all__ = [
     "TERMINAL",
     "ApiCallError",
@@ -135,5 +171,7 @@ __all__ = [
     "bundle_validate",
     "current_user",
     "failed_task_logs",
+    "mirror_freshness",
+    "mirror_sync",
     "run_now",
 ]

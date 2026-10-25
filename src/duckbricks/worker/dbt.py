@@ -82,6 +82,7 @@ def write_catalogs(project: Path, lake_db: str) -> None:
             },
         }
         for c in list_catalogs()
+        if c.mode != "live"  # a live foreign catalog has no DuckLake to give dbt
     ]
     (project / "catalogs.yml").write_text(yaml.safe_dump({"catalogs": entries}, sort_keys=False))
 

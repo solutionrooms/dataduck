@@ -1,5 +1,53 @@
 # Progress
 
+## 2026-10-25: Databricks federation and mirror (branch `mirror`, ADR 0013)
+
+The owner wants two ways to use a real Databricks workspace: query it directly, and copy chosen
+schemas locally for offline, faster use (nightly, with a near-real-time option).
+
+**Done**
+
+- UC connections of type `DATABRICKS` and foreign catalogs (`connection_name`,
+  `options.catalog`, `options.duckbricks_mode` = `live` | `mirror`), Alembic 0003.
+- Mirror mode: a read-only DuckLake catalog filled by a sync in the worker. Per table it compares
+  the remote Delta version, copies changed tables with `CREATE OR REPLACE TABLE ... AS SELECT`
+  over `delta_scan` with vended credentials, and skips unchanged ones. Include/exclude globs,
+  per-table row filters (scalar subqueries resolved first so they push down), Quartz schedule,
+  per-table poll intervals, snapshot retention, a heartbeat and stale-sync reaping.
+- Live mode: statements naming live tables get a prelude (extension attach `READ_ONLY` plus one
+  scoped Azure secret per table) on the API engine, SQL tasks and warehouses. Browsing proxies
+  to the remote Unity Catalog. Views are rejected with a message.
+- `dbk connections`, `dbk catalogs create --connection/--mode`, `dbk catalogs set-mode`,
+  `dbk mirror status|config|sync|syncs`; 7 MCP tools and a `mirror_databricks_schema` prompt;
+  a Mirror panel and live/mirror badges on the UI catalog page.
+
+**Acceptance**
+
+| Check | Result |
+|---|---|
+| `make check` | Pass: 133 unit and golden tests (17 mirror, 6 live) |
+| Mirror, trial | 2 tables, 4.68 M rows copied; re-sync skipped both; `INSERT` blocked |
+| Live | Counts match Databricks on the API engine and a warehouse; a filtered 274.6 M-row table query works; views rejected; writes blocked |
+| MCP over stdio | 29 tools; `connections_list` and `mirror_status` checked |
+
+**In progress**
+
+- First full mirror of the owner's test schema (124 tables, about 24 GB): running.
+
+**Next**
+
+1. Run an existing Databricks dbt project on Duckbricks: transpile its compiled SQL to DuckDB
+   (sqlglot; a probe of 1,923 compiled models gave 98.7% clean), map catalogs to mirror and
+   local catalogs, and pilot the models whose inputs are all mirrored.
+2. Mirror: append-only copies from the Delta log, change data feed `MERGE`, views through the
+   SQL warehouse, splitting copies that outlast a SAS.
+3. Live catalogs in notebooks and dbt.
+4. UI unit tests; a Playwright smoke test in `make e2e`.
+
+**Blockers**
+
+None.
+
 ## 2026-10-25: Phases 1-4 and the web UI (branch `platform`)
 
 The owner asked for a full working platform: workspace features, DuckDB compute, pipelines, jobs
@@ -31,11 +79,6 @@ and schedules compatible with bundles, dbt, and MCP-native control from Claude C
 | `make e2e` | Pass: shop_demo validate → deploy → run (SUCCESS) → 90 gold rows → redeploy without duplicates → rerun without double-loading → lineage → destroy; web_events pipeline with expectations and incremental reload |
 | MCP over stdio | 22 tools and 2 prompts listed; read tools, read-only rejection and destroy confirmation checked |
 | File arrival | Baseline then a new file fired a run (trigger FILE_ARRIVAL) |
-
-**In progress**
-
-- Databricks mirror (cache a Databricks schema in a local DuckLake catalog): options discussed
-  with the owner; waiting on which access paths their workspace allows.
 
 **Next**
 

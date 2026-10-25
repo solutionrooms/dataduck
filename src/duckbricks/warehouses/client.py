@@ -92,9 +92,11 @@ def run_on_warehouse(
     schema: str | None,
     settings: Settings | None = None,
     catalogs: list[CatalogAttachment] | None = None,
+    prelude: list[str] | None = None,
 ) -> QueryResult:
     """Run on the warehouse at `port`. `catalogs` are attached first if missing (idempotent),
-    so catalogs created after the warehouse started are visible."""
+    so catalogs created after the warehouse started are visible. `prelude` statements (live
+    foreign catalogs) run after the attachments, before the statement."""
     settings = settings or get_settings()
     text = inline_parameters(sql, params)
     if catalog:
@@ -106,6 +108,13 @@ def run_on_warehouse(
     text = attach + text
     uri = f"quack:{settings.warehouse_host}:{port}"
     con = _client(settings)
+    if prelude:
+        # Its own call: quack_query returns the first result set, and CREATE SECRET has one.
+        # Secrets, attachments and global settings persist in the warehouse process.
+        con.execute(
+            "SELECT * FROM quack_query(?, ?, token => ?, disable_ssl => true)",
+            [uri, "; ".join(prelude), settings.warehouse_token.get_secret_value()],
+        ).fetchall()
     relation = con.execute(
         "SELECT * FROM quack_query(?, ?, token => ?, disable_ssl => true)",
         [uri, text, settings.warehouse_token.get_secret_value()],

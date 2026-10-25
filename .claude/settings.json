@@ -15,7 +15,9 @@
       "mcp__duckbricks__bundle_validate",
       "mcp__duckbricks__dbt_check",
       "mcp__duckbricks__lineage_get",
-      "mcp__duckbricks__pipelines_list"
+      "mcp__duckbricks__pipelines_list",
+      "mcp__duckbricks__mirror_status",
+      "mcp__duckbricks__connections_list"
     ],
     "ask": [
       "mcp__duckbricks__sql_execute",
@@ -27,7 +29,12 @@
       "mcp__duckbricks__bundle_destroy",
       "mcp__duckbricks__warehouse_start",
       "mcp__duckbricks__warehouse_stop",
-      "mcp__duckbricks__pipeline_start_update"
+      "mcp__duckbricks__pipeline_start_update",
+      "mcp__duckbricks__connection_create",
+      "mcp__duckbricks__foreign_catalog_create",
+      "mcp__duckbricks__catalog_set_mode",
+      "mcp__duckbricks__mirror_configure",
+      "mcp__duckbricks__mirror_sync"
     ]
   }
 }

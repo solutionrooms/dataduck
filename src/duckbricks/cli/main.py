@@ -6,6 +6,7 @@ Output is a Rich table by default; `-o json` prints JSON.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 import time
@@ -39,6 +40,8 @@ tables_app = typer.Typer(no_args_is_help=True, help="Tables.")
 warehouses_app = typer.Typer(no_args_is_help=True, help="SQL warehouses.")
 pipelines_app = typer.Typer(no_args_is_help=True, help="Pipelines.")
 workspace_app = typer.Typer(no_args_is_help=True, help="Workspace files and notebooks.")
+connections_app = typer.Typer(no_args_is_help=True, help="Connections to Databricks workspaces.")
+mirror_app = typer.Typer(no_args_is_help=True, help="Mirror Databricks tables locally.")
 for sub, name in (
     (workspace_app, "workspace"),
     (bundle_app, "bundle"),
@@ -49,6 +52,8 @@ for sub, name in (
     (tables_app, "tables"),
     (warehouses_app, "warehouses"),
     (pipelines_app, "pipelines"),
+    (connections_app, "connections"),
+    (mirror_app, "mirror"),
 ):
     app.add_typer(sub, name=name)
 
@@ -567,10 +572,32 @@ def catalogs_list(output: OutputOpt = Output.text) -> None:
 def catalogs_create(
     name: str,
     comment: Annotated[str | None, typer.Option()] = None,
+    connection: Annotated[
+        str | None, typer.Option(help="Make a foreign catalog over this connection")
+    ] = None,
+    remote_catalog: Annotated[
+        str | None, typer.Option(help="Remote catalog name (default: same as NAME)")
+    ] = None,
+    mode: Annotated[str, typer.Option(help="Foreign catalogs: live or mirror")] = "live",
     output: OutputOpt = Output.text,
 ) -> None:
-    body = {"name": name, **({"comment": comment} if comment else {})}
+    body: dict[str, Any] = {"name": name, **({"comment": comment} if comment else {})}
+    if connection:
+        body["connection_name"] = connection
+        body["options"] = {"catalog": remote_catalog or name, "duckbricks_mode": mode}
     emit(client().post("/api/2.1/unity-catalog/catalogs", body), output)
+
+
+@catalogs_app.command("set-mode")
+def catalogs_set_mode(
+    name: str,
+    mode: Annotated[str, typer.Argument(help="live (query Databricks) or mirror (local copy)")],
+) -> None:
+    """Switch a foreign catalog between live and mirror. Running warehouses restart."""
+    client().patch(
+        f"/api/2.1/unity-catalog/catalogs/{name}", {"options": {"duckbricks_mode": mode}}
+    )
+    console.print(f"Catalog {name} is now in {mode} mode")
 
 
 @schemas_app.command("list")
@@ -662,6 +689,144 @@ def warehouses_start(warehouse_id: str) -> None:
 def warehouses_stop(warehouse_id: str) -> None:
     client().post(f"/api/2.0/sql/warehouses/{warehouse_id}/stop")
     console.print(f"Warehouse {warehouse_id} stopped")
+
+
+@connections_app.command("list")
+def connections_list(output: OutputOpt = Output.text) -> None:
+    data = client().get("/api/2.1/unity-catalog/connections")
+    rows = [
+        {**c, "token_set": c.get("properties", {}).get("duckbricks.token_set")}
+        for c in data.get("connections", [])
+    ]
+    emit(
+        data if output == Output.json else rows,
+        output,
+        ["name", "connection_type", "url", "token_set"],
+    )
+
+
+@connections_app.command("create")
+def connections_create(
+    name: str,
+    host: Annotated[
+        str | None, typer.Option(help="Workspace URL (default: DATABRICKS_HOST)")
+    ] = None,
+    warehouse_id: Annotated[
+        str | None, typer.Option(help="SQL warehouse for views (default: DATABRICKS_WAREHOUSE_ID)")
+    ] = None,
+    token_env: Annotated[
+        str, typer.Option(help="Environment variable holding the token")
+    ] = "DATABRICKS_TOKEN",
+    output: OutputOpt = Output.text,
+) -> None:
+    """Register a Databricks workspace. The token stays in .env; it is never sent or stored."""
+    options = {"duckbricks_token_env": token_env}
+    if host:
+        options["host"] = host
+    if warehouse_id:
+        options["duckbricks_warehouse_id"] = warehouse_id
+    body = {"name": name, "connection_type": "DATABRICKS", "options": options}
+    emit(client().post("/api/2.1/unity-catalog/connections", body), output)
+
+
+@connections_app.command("delete")
+def connections_delete(name: str) -> None:
+    client().delete(f"/api/2.1/unity-catalog/connections/{name}")
+    console.print(f"Deleted connection {name}")
+
+
+@mirror_app.command("status")
+def mirror_status(catalog: str, output: OutputOpt = Output.text) -> None:
+    """A mirror's mode, config, tables and recent syncs."""
+    data = client().get(f"/api/duckbricks/mirrors/{catalog}")
+    if output == Output.json:
+        emit(data, output)
+        return
+    from duckbricks import ops
+
+    emit(
+        {k: data[k] for k in ("catalog", "mode", "connection_name", "remote_catalog")}
+        | ops.mirror_freshness(data),
+        output,
+    )
+    emit(
+        data["tables"],
+        output,
+        ["schema_name", "table_name", "status", "rows", "remote_version", "synced_at", "error"],
+        title="Tables",
+    )
+    emit(
+        data["syncs"],
+        output,
+        ["sync_id", "trigger", "state", "queued_at", "ended_at", "message"],
+        title="Recent syncs",
+    )
+
+
+@mirror_app.command("config")
+def mirror_config(
+    catalog: str,
+    file: Annotated[
+        Path | None, typer.Option("--file", "-f", help="Set the config from a YAML or JSON file")
+    ] = None,
+    output: OutputOpt = Output.text,
+) -> None:
+    """Show a mirror's config, or set it from a file (schemas, include, exclude, filters, ...)."""
+    if file is None:
+        emit(client().get(f"/api/duckbricks/mirrors/{catalog}")["config"], Output.json)
+        return
+    import yaml
+
+    config = yaml.safe_load(file.read_text())
+    emit(client().put(f"/api/duckbricks/mirrors/{catalog}", config)["config"], output)
+
+
+@mirror_app.command("sync")
+def mirror_sync(
+    catalog: str,
+    table: Annotated[
+        list[str] | None, typer.Option("--table", "-t", help="schema.table glob (repeatable)")
+    ] = None,
+    full_refresh: Annotated[bool, typer.Option("--full-refresh")] = False,
+    wait: Annotated[bool, typer.Option("--wait/--no-wait")] = True,
+    output: OutputOpt = Output.text,
+) -> None:
+    """Copy changed tables now (all, or those matching --table)."""
+    from duckbricks import ops
+
+    with console.status(f"Syncing {catalog}...") if wait else contextlib.nullcontext():
+        sync = ops.mirror_sync(client(), catalog, table, full_refresh, wait)
+    for warning in sync.get("warnings", []):
+        err.print(f"[yellow]Warning:[/yellow] {warning}")
+    emit(
+        {
+            k: sync.get(k)
+            for k in ("sync_id", "state", "copied", "skipped", "failed", "rows", "message")
+        },
+        output,
+    )
+    if sync["state"] in ("FAILED", "PARTIAL"):
+        raise typer.Exit(1)
+
+
+@mirror_app.command("syncs")
+def mirror_syncs(catalog: str, limit: int = 20, output: OutputOpt = Output.text) -> None:
+    data = client().get(f"/api/duckbricks/mirrors/{catalog}/syncs", limit=limit)
+    emit(
+        data if output == Output.json else data["syncs"],
+        output,
+        [
+            "sync_id",
+            "trigger",
+            "state",
+            "copied",
+            "skipped",
+            "failed",
+            "rows",
+            "queued_at",
+            "ended_at",
+        ],
+    )
 
 
 @pipelines_app.command("list")
@@ -766,17 +931,10 @@ def ui(
         console.print(f"Opening {url}")
         webbrowser.open(url)
         return
-    from duckbricks.core.session import CatalogAttachment, open_session
+    from duckbricks.core.session import attachment_from_catalog_json, open_session
 
-    catalogs = [
-        CatalogAttachment(
-            name=item["name"],
-            metadata_schema=item["properties"]["duckbricks.metadata_schema"],
-            data_path=item["storage_root"],
-        )
-        for item in c.get("/api/2.1/unity-catalog/catalogs")["catalogs"]
-        if item.get("properties", {}).get("duckbricks.metadata_schema")
-    ]
+    items = c.get("/api/2.1/unity-catalog/catalogs")["catalogs"]
+    catalogs = [a for a in map(attachment_from_catalog_json, items) if a is not None]
     con = open_session(catalogs=catalogs)
     con.execute("CALL start_ui()")
     console.print("DuckDB UI running at http://localhost:4213 (Ctrl-C to stop)")

@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     warehouse_token: SecretStr = SecretStr("")
     notebooks_url: str = "http://127.0.0.1:2718"
     notebooks_token: SecretStr = SecretStr("")
+
+    # A Databricks workspace for live foreign catalogs and the mirror (ADR 0013). Optional; the
+    # Databricks CLI's variable names, so one .env serves both.
+    databricks_host: str = Field(default="", validation_alias="DATABRICKS_HOST")
+    databricks_token: SecretStr = Field(default=SecretStr(""), validation_alias="DATABRICKS_TOKEN")
+    databricks_warehouse_id: str = Field(default="", validation_alias="DATABRICKS_WAREHOUSE_ID")
 
     @property
     def user_short_name(self) -> str:

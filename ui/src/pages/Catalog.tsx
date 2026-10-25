@@ -24,7 +24,14 @@ import {
   useTables,
 } from "../api/hooks";
 import { useTableIndex } from "../api/search";
-import type { Catalog, ColumnLineage, TableHistoryEntry, TableInfo, TableLineage } from "../api/types";
+import type {
+  Catalog,
+  ColumnLineage,
+  MirrorStatus,
+  TableHistoryEntry,
+  TableInfo,
+  TableLineage,
+} from "../api/types";
 import { DagGraph, type DagNode } from "../components/DagGraph";
 import { DataGrid } from "../components/DataGrid";
 import { Dialog, DialogButtons } from "../components/Dialog";
@@ -35,6 +42,15 @@ import { DateTime } from "../components/Time";
 import { formatDuration, formatNumber } from "../lib/format";
 import { addRecent } from "../lib/recents";
 import { openSqlTab } from "../lib/sqlTabs";
+
+function catalogKind(c: Catalog | undefined): string {
+  if (!c) return "–";
+  if (c.catalog_type === "SYSTEM_CATALOG") return "System";
+  if (c.catalog_type === "FOREIGN_CATALOG") {
+    return c.options?.duckbricks_mode === "mirror" ? "Mirror · Databricks" : "Live · Databricks";
+  }
+  return "Managed";
+}
 
 interface Selection {
   catalog?: string;
@@ -201,6 +217,11 @@ function CatalogNode({ catalog, sel }: { catalog: Catalog; sel: Selection }) {
         <CatalogIcon />
         <span className="label">{catalog.name}</span>
         {catalog.catalog_type === "SYSTEM_CATALOG" && <Lock size={11} className="muted" />}
+        {catalog.catalog_type === "FOREIGN_CATALOG" && (
+          <span className="muted" style={{ fontSize: 11 }}>
+            {catalog.options?.duckbricks_mode === "mirror" ? "mirror" : "live"}
+          </span>
+        )}
       </Link>
       {open &&
         (schemas.data ? (
@@ -357,7 +378,7 @@ function CatalogsOverview() {
                       <Link to={exploreUrl(c.name)}>{c.name}</Link>
                     </div>
                   </td>
-                  <td className="secondary">{c.catalog_type === "SYSTEM_CATALOG" ? "System" : "Managed"}</td>
+                  <td className="secondary">{catalogKind(c)}</td>
                   <td className="secondary">{c.comment || "–"}</td>
                   <td className="secondary mono">{c.storage_root ?? "–"}</td>
                   <td className="secondary">
@@ -386,6 +407,7 @@ function CatalogView({ name }: { name: string }) {
   const [creating, setCreating] = useState(false);
   const info = catalogs.data?.find((c) => c.name === name);
   const system = info?.catalog_type === "SYSTEM_CATALOG";
+  const foreign = info?.catalog_type === "FOREIGN_CATALOG";
 
   return (
     <>
@@ -398,9 +420,10 @@ function CatalogView({ name }: { name: string }) {
           <CatalogIcon size={22} />
           <span className="title-text">{name}</span>
           {system && <span className="badge">System · read-only</span>}
+          {foreign && <span className="badge">{catalogKind(info)} · read-only</span>}
         </h1>
         <div className="page-actions">
-          <button className="btn btn-primary" onClick={() => setCreating(true)} disabled={system}>
+          <button className="btn btn-primary" onClick={() => setCreating(true)} disabled={system || foreign}>
             <Plus size={14} />
             Create schema
           </button>
@@ -445,7 +468,7 @@ function CatalogView({ name }: { name: string }) {
             <div className="card-title">About this catalog</div>
             <dl className="kv">
               <dt>Type</dt>
-              <dd>{info.catalog_type ?? "–"}</dd>
+              <dd>{catalogKind(info)}</dd>
               <dt>Owner</dt>
               <dd>{info.owner ?? "–"}</dd>
               <dt>Storage root</dt>
@@ -458,8 +481,101 @@ function CatalogView({ name }: { name: string }) {
           </div>
         )}
       </div>
+      {foreign && <MirrorPanel catalog={name} />}
       {creating && <CreateDialog kind="schema" catalog={name} onClose={() => setCreating(false)} />}
     </>
+  );
+}
+
+// --- mirror (foreign catalogs, ADR 0013) -----------------------------------------------------
+
+function MirrorPanel({ catalog }: { catalog: string }) {
+  const qc = useQueryClient();
+  const status = useQuery({
+    queryKey: ["mirror", catalog],
+    queryFn: () => get<MirrorStatus>(`/api/duckbricks/mirrors/${encodeURIComponent(catalog)}`),
+    refetchInterval: (q) =>
+      q.state.data?.syncs.some((s) => s.state === "QUEUED" || s.state === "RUNNING") ? 5_000 : 60_000,
+  });
+  const sync = useMutation({
+    mutationFn: () => post(`/api/duckbricks/mirrors/${encodeURIComponent(catalog)}/sync`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mirror", catalog] }),
+  });
+  if (!status.data) return <QueryState query={status} what="Mirror" />;
+  const data = status.data;
+  const active = data.syncs.find((s) => s.state === "QUEUED" || s.state === "RUNNING");
+  const synced = data.tables.filter((t) => t.status === "SYNCED");
+  const rows = synced.reduce((n, t) => n + (t.rows ?? 0), 0);
+  const oldest = synced.map((t) => t.synced_at).filter(Boolean).sort()[0] ?? null;
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div className="page-header">
+        <div className="section-title">Mirror</div>
+        <div className="page-actions">
+          <button
+            className="btn"
+            onClick={() => sync.mutate()}
+            disabled={!data.config || sync.isPending || !!active}
+            title={data.config ? "Copy changed tables now" : "Set a mirror config first (dbk mirror config)"}
+          >
+            <RefreshCw size={14} />
+            {active ? `Sync ${active.sync_id} ${active.state.toLowerCase()}…` : "Sync now"}
+          </button>
+        </div>
+      </div>
+      {sync.isError && <ErrorBanner error={sync.error} />}
+      <p className="secondary" style={{ marginTop: -6 }}>
+        {data.mode === "mirror"
+          ? "Queries read the local copy, so they work offline."
+          : "Live mode: queries read Databricks storage directly. The copy below is used after switching to mirror mode."}{" "}
+        Remote catalog <span className="mono">{data.remote_catalog}</span> over connection{" "}
+        <span className="mono">{data.connection_name}</span>.{" "}
+        {synced.length} tables, {formatNumber(rows)} rows
+        {oldest ? (
+          <>
+            ; oldest copy <DateTime value={oldest} />
+          </>
+        ) : null}
+        .
+      </p>
+      {data.tables.length ? (
+        <table className="dt">
+          <thead>
+            <tr>
+              <th>Table</th>
+              <th>Status</th>
+              <th>Rows</th>
+              <th>Delta version</th>
+              <th>Copied</th>
+              <th>Took</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.tables.map((t) => (
+              <tr key={`${t.schema_name}.${t.table_name}`} title={t.error ?? t.filter ?? undefined}>
+                <td className="mono">
+                  {t.status === "SYNCED" ? (
+                    <Link to={exploreUrl(catalog, t.schema_name, t.table_name)}>
+                      {t.schema_name}.{t.table_name}
+                    </Link>
+                  ) : (
+                    `${t.schema_name}.${t.table_name}`
+                  )}
+                  {t.filter && <span className="muted"> (filtered)</span>}
+                </td>
+                <td className={t.status === "FAILED" ? "danger" : "secondary"}>{t.status.toLowerCase()}</td>
+                <td className="secondary">{formatNumber(t.rows)}</td>
+                <td className="secondary">{t.remote_version ?? "–"}</td>
+                <td className="secondary">{t.synced_at ? <DateTime value={t.synced_at} /> : "–"}</td>
+                <td className="secondary">{formatDuration(t.duration_ms)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <EmptyState compact title={data.config ? "Nothing copied yet" : "No mirror config yet"} />
+      )}
+    </div>
   );
 }
 

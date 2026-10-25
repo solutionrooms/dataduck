@@ -52,11 +52,22 @@ Verified 2026-10-25 on macOS arm64 (Docker Desktop, linux/arm64 images).
 | TypeScript | 7.0.2 |
 | Node (build image) | `node:22-alpine` |
 
-## Other DuckDB extensions available (not used yet)
+## Federation extensions (ADR 0013)
 
-`unity_catalog`, `delta` (`delta_scan`, deletion vectors), `iceberg` (incl. `iceberg_to_ducklake`)
-and `azure` install and load on DuckDB 2.0.0 in the worker image (checked 2026-10-25), for a
-possible Databricks mirror. No `delta_sharing` extension exists in the community repository.
+`unity_catalog`, `delta` (`delta_scan`, deletion vectors) and `azure` are baked into every image
+with `ducklake`, `httpfs`, `postgres` and `quack` (checked 2026-10-25 on DuckDB 2.0.0).
+
+- `delta_scan('abfss://...')` reads Unity Catalog managed tables with a scoped `azure` secret
+  whose `CONNECTION_STRING` carries a vended user-delegation SAS (`BlobEndpoint`, `DfsEndpoint`,
+  `SharedAccessSignature`). Deletion vectors are applied.
+- `ATTACH 'catalog' AS x (TYPE unity_catalog, SECRET s, READ_ONLY true)` lists and reads tables,
+  but does not apply vended Azure credentials itself: scans need the scoped `azure` secret.
+  The `unity_catalog` secret takes `TOKEN`, `ENDPOINT`, `AWS_REGION` (any value works on Azure).
+- In Debian images the `azure` extension's default transport fails with "Problem with the SSL CA
+  cert"; `SET azure_transport_option_type = 'curl'` works.
+- DuckLake: `CALL ducklake_expire_snapshots('cat', older_than => ...)` then
+  `CALL ducklake_cleanup_old_files('cat', cleanup_all => true)` removes replaced files.
+- `iceberg` (incl. `iceberg_to_ducklake`) also loads; unused. No `delta_sharing` extension exists.
 
 ## dbt
 

@@ -56,6 +56,47 @@ export interface Catalog {
   created_at?: number;
   created_by?: string;
   properties?: Record<string, unknown>;
+  connection_name?: string;
+  options?: Record<string, string>;
+}
+
+// Duckbricks extension: a foreign catalog's mirror (ADR 0013).
+export interface MirrorTable {
+  schema_name: string;
+  table_name: string;
+  table_type: string;
+  status: string;
+  remote_version: number | null;
+  filter: string | null;
+  rows: number | null;
+  duration_ms: number | null;
+  error: string | null;
+  synced_at: string | null;
+  checked_at: string | null;
+}
+
+export interface MirrorSync {
+  sync_id: number;
+  trigger: string;
+  state: string;
+  copied: number;
+  skipped: number;
+  failed: number;
+  rows: number;
+  message: string | null;
+  queued_at: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+}
+
+export interface MirrorStatus {
+  catalog: string;
+  mode: "live" | "mirror";
+  connection_name: string;
+  remote_catalog: string;
+  config: Record<string, unknown> | null;
+  tables: MirrorTable[];
+  syncs: MirrorSync[];
 }
 
 export interface Schema {

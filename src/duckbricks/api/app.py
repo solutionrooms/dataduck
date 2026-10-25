@@ -16,6 +16,7 @@ from sqlalchemy import text
 from duckbricks.api.auth import require_token
 from duckbricks.api.routes import (
     bundles,
+    federation,
     jobs,
     platform,
     statements,
@@ -102,7 +103,16 @@ def health() -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
-for module in (unity_catalog, statements, jobs, workspace, platform, bundles, warehouses):
+for module in (
+    unity_catalog,
+    statements,
+    jobs,
+    workspace,
+    platform,
+    bundles,
+    warehouses,
+    federation,
+):
     app.include_router(module.router, dependencies=[Depends(require_token)])
 
 

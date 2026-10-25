@@ -573,6 +573,145 @@ def pipeline_start_update(pipeline_id: str, full_refresh: bool = False, wait: bo
     )
 
 
+# --- Databricks federation and mirror (ADR 0013) ----------------------------------------------
+
+
+@server.tool(annotations=READ)
+def mirror_status(catalog: str) -> str:
+    """A foreign catalog's mode (live or mirror), mirror config, per-table freshness and
+    recent syncs. Use it to check how fresh local copies of Databricks tables are."""
+    data = call(api().get, f"/api/duckbricks/mirrors/{catalog}")
+    fresh = ops.mirror_freshness(data)
+    lines = [
+        f"**{catalog}**: {data['mode']} mode over connection {data['connection_name']} "
+        f"(remote catalog {data['remote_catalog']})",
+        f"{fresh['synced']} tables synced ({fresh['rows']} rows), {fresh['failed']} failed; "
+        f"oldest copy {fresh['oldest_copy']}, newest {fresh['newest_copy']}",
+        "",
+        "Config: " + json.dumps(data["config"]),
+        "",
+        md_table(
+            data["tables"],
+            ["schema_name", "table_name", "status", "rows", "remote_version", "synced_at", "error"],
+            cap=200,
+        ),
+        "",
+        "Recent syncs:",
+        md_table(data["syncs"], ["sync_id", "trigger", "state", "ended_at", "message"], cap=5),
+    ]
+    return "\n".join(lines)
+
+
+@server.tool(annotations=READ)
+def connections_list() -> str:
+    """Connections to Databricks workspaces, and whether each has a token in .env."""
+    items = call(api().get, "/api/2.1/unity-catalog/connections").get("connections", [])
+    rows = [{**c, "token_set": c["properties"].get("duckbricks.token_set")} for c in items]
+    return md_table(rows, ["name", "connection_type", "url", "token_set", "comment"])
+
+
+@server.tool(annotations=WRITE)
+def connection_create(
+    name: str,
+    host: str | None = None,
+    warehouse_id: str | None = None,
+    token_env: str = "DATABRICKS_TOKEN",
+) -> str:
+    """Register a Databricks workspace. The token is read from the environment variable
+    `token_env` in Duckbricks' .env; never pass a token here. `host` and `warehouse_id` default
+    to DATABRICKS_HOST and DATABRICKS_WAREHOUSE_ID."""
+    options: dict[str, str] = {"duckbricks_token_env": token_env}
+    if host:
+        options["host"] = host
+    if warehouse_id:
+        options["duckbricks_warehouse_id"] = warehouse_id
+    body = {"name": name, "connection_type": "DATABRICKS", "options": options}
+    created = call(api().post, "/api/2.1/unity-catalog/connections", body)
+    token = created["properties"].get("duckbricks.token_set")
+    note = "" if token == "true" else f" Warning: {token_env} is not set in Duckbricks' .env."
+    return f"Connection {name} -> {created['url']} created.{note}"
+
+
+@server.tool(annotations=WRITE)
+def foreign_catalog_create(
+    name: str, connection: str, remote_catalog: str | None = None, mode: str = "live"
+) -> str:
+    """Expose a Databricks catalog in Duckbricks under `name` (default remote name: `name`).
+    mode=live queries Databricks storage directly; mode=mirror serves a local copy that
+    mirror_configure and mirror_sync fill."""
+    body = {
+        "name": name,
+        "connection_name": connection,
+        "options": {"catalog": remote_catalog or name, "duckbricks_mode": mode},
+    }
+    call(api().post, "/api/2.1/unity-catalog/catalogs", body)
+    return f"Foreign catalog {name} created in {mode} mode"
+
+
+@server.tool(annotations=WRITE)
+def catalog_set_mode(name: str, mode: str) -> str:
+    """Switch a foreign catalog between live (query Databricks) and mirror (local copy, works
+    offline). Running warehouses restart."""
+    body = {"options": {"duckbricks_mode": mode}}
+    call(api().patch, f"/api/2.1/unity-catalog/catalogs/{name}", body)
+    return f"Catalog {name} is now in {mode} mode"
+
+
+@server.tool(annotations=WRITE)
+def mirror_configure(
+    catalog: str,
+    schemas: list[str],
+    include: list[str] | None = None,
+    exclude: list[str] | None = None,
+    filters: dict[str, str] | None = None,
+    include_views: bool = True,
+    schedule_cron: str | None = "0 0 2 * * ?",
+    timezone: str = "UTC",
+    poll_minutes: dict[str, int] | None = None,
+    keep_history_hours: int = 0,
+) -> str:
+    """Set what a foreign catalog mirrors. Table keys and globs are `schema.table`.
+    `filters` maps a table to a DuckDB predicate over `source`; scalar subqueries such as
+    (SELECT max(d) FROM source) are evaluated first. `schedule_cron` is Quartz (None = no
+    nightly sync). `poll_minutes` gives near-real-time version checks for chosen tables.
+    Views are copied through the SQL warehouse, which can be slow for big views."""
+    config: dict[str, Any] = {
+        "schemas": schemas,
+        "include": include or [],
+        "exclude": exclude or [],
+        "filters": filters or {},
+        "include_views": include_views,
+        "schedule": (
+            {"quartz_cron_expression": schedule_cron, "timezone_id": timezone}
+            if schedule_cron
+            else None
+        ),
+        "poll_minutes": poll_minutes or {},
+        "keep_history_hours": keep_history_hours,
+    }
+    saved = call(api().put, f"/api/duckbricks/mirrors/{catalog}", config)
+    return f"Mirror config for {catalog} saved:\n" + json.dumps(saved["config"], indent=2)
+
+
+@server.tool(annotations=WRITE)
+def mirror_sync(
+    catalog: str, tables: list[str] | None = None, full_refresh: bool = False, wait: bool = False
+) -> str:
+    """Copy changed Databricks tables into the mirror now (all, or `tables` globs). Unchanged
+    tables are skipped by Delta version. A first sync can take a long time; by default this
+    returns at once; check progress with mirror_status."""
+    sync = call(ops.mirror_sync, api(), catalog, tables, full_refresh, wait)
+    text = (
+        f"Sync {sync['sync_id']}: **{sync['state']}** - {sync['copied']} copied, "
+        f"{sync['skipped']} unchanged, {sync['failed']} failed, {sync['rows']} rows"
+    )
+    if sync.get("message"):
+        text += f"\n{sync['message']}"
+    for warning in sync.get("warnings", []):
+        text += f"\nWarning: {warning}"
+    return text
+
+
 # --- prompts ----------------------------------------------------------------------------------
 
 
@@ -596,6 +735,18 @@ def investigate_failed_run(run_id: int) -> str:
         "logs. Inspect the tables and SQL involved with table_describe and sql_query. Explain "
         "the root cause, propose the smallest fix to the bundle source, and offer to redeploy "
         "and re-run."
+    )
+
+
+@server.prompt()
+def mirror_databricks_schema(catalog: str, schema: str) -> str:
+    """Mirror a Databricks schema into Duckbricks for fast, offline queries."""
+    return (
+        f"Mirror Databricks schema {catalog}.{schema} into Duckbricks. Use connections_list "
+        "(create one with connection_create if none exists), then foreign_catalog_create in "
+        "mirror mode if the catalog is missing. Before configuring, list the schema's tables with "
+        "catalog_browse on a live foreign catalog, and ask which large tables to exclude or "
+        "filter. Then mirror_configure, mirror_sync, and mirror_status to report what was copied."
     )
 
 
